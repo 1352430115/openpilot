@@ -35,11 +35,12 @@ void ExperimentalButton::changeMode() {
 void ExperimentalButton::updateState(const UIState &s) {
   const auto cs = (*s.sm)["selfdriveState"].getSelfdriveState();
   bool eng = cs.getEngageable() || cs.getEnabled();
+  steering_angle = (*s.sm)["carState"].getCarState().getSteeringAngleDeg();
   if ((cs.getExperimentalMode() != experimental_mode) || (eng != engageable)) {
     engageable = eng;
     experimental_mode = cs.getExperimentalMode();
-    update();
   }
+  update();
 }
 
 void ExperimentalButton::paintEvent(QPaintEvent *event) {
@@ -49,5 +50,7 @@ void ExperimentalButton::paintEvent(QPaintEvent *event) {
 
 void ExperimentalButton::drawButton(QPainter &p) {
   QPixmap img = experimental_mode ? experimental_img : engage_img;
-  drawIcon(p, QPoint(btn_size / 2, btn_size / 2), img, QColor(0, 0, 0, 166), (isDown() || !engageable) ? 0.5 : 0.6);
+  // 总是使用旋转后的图像
+  QPixmap rotated_img = img.transformed(QTransform().rotate(-steering_angle), Qt::SmoothTransformation);
+  drawIcon(p, QPoint(btn_size / 2, btn_size / 2), rotated_img, QColor(0, 0, 0, 166), (isDown() || !engageable) ? 0.5 : 0.6);
 }
