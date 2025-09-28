@@ -93,12 +93,12 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
     return x, v, a, j, throttle_prob
 
   def update(self, sm):
-    mode = 'blended' if sm['selfdriveState'].experimentalMode else 'acc'
+    self.mode = 'blended' if sm['selfdriveState'].experimentalMode else 'acc'
     if not self.mlsim:
-      self.mpc.mode = mode
+      self.mpc.mode = self.mode
     LongitudinalPlannerSP.update(self, sm)
     if dec_mpc_mode := self.get_mpc_mode():
-      mode = dec_mpc_mode
+      self.mode = dec_mpc_mode
       if not self.mlsim:
         self.mpc.mode = dec_mpc_mode
 
@@ -123,10 +123,23 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
     # No change cost when user is controlling the speed, or when standstill
     prev_accel_constraint = not (reset_state or sm['carState'].standstill)
 
-    if mode == 'acc':
-      accel_clip = [ACCEL_MIN, get_max_accel(v_ego)]
-      steer_angle_without_offset = sm['carState'].steeringAngleDeg - sm['liveParameters'].angleOffsetDeg
-      accel_clip = limit_accel_in_turns(v_ego, steer_angle_without_offset, accel_clip, self.CP)
+    if self.mode == 'acc':
+      if self.vibe_controller.is_accel_enabled():
+        # Only get max acceleration from vibe controller, use default ACCEL_MIN for minimum
+        accel_limits = self.vibe_controller.get_accel_limits(v_ego)
+        if accel_limits is not None:
+          max_accel = accel_limits[1]
+          accel_clip = [ACCEL_MIN, max_accel]
+        else:
+          # Fallback to stock if vibe controller returns None
+          accel_clip = [ACCEL_MIN, get_max_accel(v_ego)]
+        # Recalculate limit turn according to the new max limit
+        steer_angle_without_offset = sm['carState'].steeringAngleDeg - sm['liveParameters'].angleOffsetDeg
+        accel_clip = limit_accel_in_turns(v_ego, steer_angle_without_offset, accel_clip, self.CP)
+      else:
+        accel_clip = [ACCEL_MIN, get_max_accel(v_ego)]
+        steer_angle_without_offset = sm['carState'].steeringAngleDeg - sm['liveParameters'].angleOffsetDeg
+        accel_clip = limit_accel_in_turns(v_ego, steer_angle_without_offset, accel_clip, self.CP)
     else:
       accel_clip = [ACCEL_MIN, ACCEL_MAX]
 
@@ -173,7 +186,7 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
     output_a_target_e2e = sm['modelV2'].action.desiredAcceleration
     output_should_stop_e2e = sm['modelV2'].action.shouldStop
 
-    if mode == 'acc' or not self.mlsim:
+    if self.mode == 'acc' or not self.mlsim:
       output_a_target = output_a_target_mpc
       self.output_should_stop = output_should_stop_mpc
     else:
