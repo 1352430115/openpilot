@@ -805,6 +805,30 @@ Firehose Mode allows you to maximize your training data uploads to improve openp
         <source>Start the vehicle to check vehicle compatibility.</source>
         <translation>请启动车辆以检查兼容性。</translation>
     </message>
+    <message>
+        <source>Vibe Personality Controller</source>
+        <translation>驾驶个性控制器</translation>
+    </message>
+    <message>
+        <source>Advanced driving personality system with separate controls for acceleration behavior (Eco/Normal/Sport) and following distance/braking (Relaxed/Standard/Aggressive). Customize your driving experience with independent acceleration and distance personalities.</source>
+        <translation>高级驾驶个性系统，可分别控制 驾驶风格（积极/标准/舒适）和 跟车距离/制动表现（Sport/Normal/Eco）。通过独立的加速与距离个性设置，定制您的驾驶体验。</translation>
+    </message>
+    <message>
+        <source>Acceleration Personality</source>
+        <translation>加速个性</translation>
+    </message>
+    <message>
+        <source>Controls acceleration behavior: Eco (efficient), Normal (balanced), Sport (responsive). Adjust how aggressively the vehicle accelerates while maintaining smooth operation.</source>
+        <translation>控制加速行为：Eco（高效）、Normal（均衡）、Sport（灵敏）。在保持平顺操作的同时，调整车辆加速的激进程度。</translation>
+    </message>
+    <message>
+        <source>Following Distance Personality</source>
+        <translation>跟车距离个性</translation>
+    </message>
+    <message>
+        <source>Controls following distance and braking behavior: Relaxed (longer distance, gentler braking), Standard (balanced), Aggressive (shorter distance, firmer braking). Fine-tune your comfort level in traffic situations.</source>
+        <translation>控制跟车距离与制动表现：舒适（更长距离、更柔和制动）、标准（均衡）、积极（更短距离、更果断制动）。根据交通状况微调您的驾驶舒适度。</translation>
+    </message>
 </context>
 <context>
     <name>MadsSettings</name>
@@ -2260,6 +2284,10 @@ Warning: You are on a metered connection!</source>
         <translation>驾驶风格</translation>
     </message>
     <message>
+        <source>Acceleration Personality</source>
+        <translation>加速个性</translation>
+    </message>
+    <message>
         <source>End-to-End Longitudinal Control</source>
         <translation>端到端纵向控制</translation>
     </message>
@@ -2310,6 +2338,10 @@ Warning: You are on a metered connection!</source>
     <message>
         <source>Standard is recommended. In aggressive mode, sunnypilot will follow lead cars closer and be more aggressive with the gas and brake. In relaxed mode sunnypilot will stay further away from lead cars. On supported cars, you can cycle through these personalities with your steering wheel distance button.</source>
         <translation>推荐使用 标准模式。在 积极模式 下，sunnypilot 会更靠近前方车辆，并在油门和刹车方面更加激进。在 舒适模式 下，sunnypilot 会与前方车辆保持更远距离。在支持的车型上，你可以使用方向盘上的距离按钮来循环切换这些驾驶风格。</translation>
+    </message>
+    <message>
+        <source>Normal is recommended. In sport mode, sunnypilot will provide aggressive acceleration for a dynamic driving experience. In eco mode, sunnypilot will apply smoother and more relaxed acceleration. On supported cars, you can cycle through these acceleration personality within Onroad Settings on the driving screen.</source>
+        <translation>Normal为推荐选项。在Sport模式下，sunnypilot将提供激进的加速表现，带来更具动感的驾驶体验；Eco模式下则采用更平缓柔和的加速方式。对于支持的车型，您可通过驾驶界面"道路设置"中的选项循环切换这些加速个性模式。</translation>
     </message>
     <message>
         <source>sunnypilot defaults to driving in &lt;b&gt;chill mode&lt;/b&gt;. Experimental mode enables &lt;b&gt;alpha-level features&lt;/b&gt; that aren&apos;t ready for chill mode. Experimental features are listed below:</source>
