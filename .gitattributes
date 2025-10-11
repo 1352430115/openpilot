@@ -23,3 +23,4 @@ sunnypilot/selfdrive/assets/img_minus_arrow_down.png -filter=lfs -diff=lfs -merg
 sunnypilot/selfdrive/assets/img_plus_arrow_up.png -filter=lfs -diff=lfs -merge=lfs
 sunnypilot/selfdrive/assets/offroad/icon_display.png -filter=lfs -diff=lfs -merge=lfs
 sunnypilot/selfdrive/assets/images/green_light.png -filter=lfs -diff=lfs -merge=lfs
+sunnypilot/selfdrive/assets/images/lead_depart.png -filter=lfs -diff=lfs -merge=lfs
