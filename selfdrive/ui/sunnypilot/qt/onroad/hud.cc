@@ -427,7 +427,7 @@ void HudRendererSP::drawSpeedLimitSigns(QPainter &p, QRect &sign_rect) {
     speedLimitSubText = (speedLimitOffset > 0 ? "" : "-") + QString::number(std::nearbyint(speedLimitOffset));
   }
 
-  float speedLimitSubTextFactor = is_metric ? 0.5 : 0.6;
+  float speedLimitSubTextFactor = 0.6; // 统一使用英制的因子
   if (speedLimitSubText.size() >= 3) {
     speedLimitSubTextFactor = 0.475;
   }
@@ -437,107 +437,50 @@ void HudRendererSP::drawSpeedLimitSigns(QPainter &p, QRect &sign_rect) {
   QColor speed_color = (speedLimitWarningEnabled && overspeed) ? red_color :
                        (!speedLimitValid && speedLimitLastValid ? QColor(0x91, 0x9b, 0x95, 0xf1) : QColor(0, 0, 0, alpha));
 
-  if (is_metric) {
-    // EU Vienna Convention style circular sign
-    QRect vienna_rect = sign_rect;
-    int circle_size = std::min(vienna_rect.width(), vienna_rect.height());
-    QRect circle_rect(vienna_rect.x(), vienna_rect.y(), circle_size, circle_size);
+  // 统一使用US/Canada MUTCD style sign
+  p.setPen(Qt::NoPen);
+  p.setBrush(QColor(255, 255, 255, alpha));
+  p.drawRoundedRect(sign_rect, 32, 32);
 
-    if (vienna_rect.width() > vienna_rect.height()) {
-      circle_rect.moveLeft(vienna_rect.x() + (vienna_rect.width() - circle_size) / 2);
-    } else if (vienna_rect.height() > vienna_rect.width()) {
-      circle_rect.moveTop(vienna_rect.y() + (vienna_rect.height() - circle_size) / 2);
-    }
+  // Inner border with violation color coding
+  QRect inner_rect = sign_rect.adjusted(10, 10, -10, -10);
+  QColor border_color = QColor(0, 0, 0, alpha);
 
-    // White background circle
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(255, 255, 255, alpha));
-    p.drawEllipse(circle_rect);
+  p.setPen(QPen(border_color, 4));
+  p.setBrush(QColor(255, 255, 255, alpha));
+  p.drawRoundedRect(inner_rect, 22, 22);
 
-    // Red border ring with color coding
-    QRect red_ring = circle_rect;
+  // "SPEED LIMIT" text
+  p.setFont(InterFont(40, QFont::DemiBold));
+  p.setPen(QColor(0, 0, 0, alpha));
+  p.drawText(inner_rect.adjusted(0, 2, 0, 0), Qt::AlignTop | Qt::AlignHCenter, tr("SPEED"));
+  p.drawText(inner_rect.adjusted(0, 42, 0, 0), Qt::AlignTop | Qt::AlignHCenter, tr("LIMIT"));
 
-    p.setBrush(red_color);
-    p.drawEllipse(red_ring);
+  // Speed value with color coding
+  p.setFont(InterFont(90, QFont::Bold));
 
-    // Center white circle for text
-    int ring_size = circle_size * 0.12;
-    QRect center_circle = red_ring.adjusted(ring_size, ring_size, -ring_size, -ring_size);
-    p.setBrush(QColor(255, 255, 255, alpha));
-    p.drawEllipse(center_circle);
+  p.setPen(speed_color);
+  p.drawText(inner_rect.adjusted(0, 80, 0, 0), Qt::AlignTop | Qt::AlignHCenter, speedLimitStr);
 
-    // Speed value, smaller font for 3+ digits
-    int font_size = (speedLimitStr.size() >= 3) ? 70 : 85;
-    p.setFont(InterFont(font_size, QFont::Bold));
+  // Offset value in small box
+  if (!speedLimitSubText.isEmpty() && hasSpeedLimit) {
+    int offset_box_size = sign_rect.width() * 0.4;
+    int overlap = offset_box_size * 0.25;
+    QRect offset_box_rect(
+      sign_rect.right() - offset_box_size/1.5 + overlap,
+      sign_rect.top() - offset_box_size/1.25 + overlap,
+      offset_box_size,
+      offset_box_size
+    );
 
-    p.setPen(speed_color);
-    p.drawText(center_circle, Qt::AlignCenter, speedLimitStr);
+    int corner_radius = offset_box_size * 0.2;
+    p.setPen(QPen(QColor(77, 77, 77, 255), 6));
+    p.setBrush(QColor(0, 0, 0, alpha));
+    p.drawRoundedRect(offset_box_rect, corner_radius, corner_radius);
 
-    // Offset value in small circular box
-    if (!speedLimitSubText.isEmpty() && hasSpeedLimit) {
-      int offset_circle_size = circle_size * 0.4;
-      int overlap = offset_circle_size * 0.25;
-      QRect offset_circle_rect(
-        circle_rect.right() - offset_circle_size/1.25 + overlap,
-        circle_rect.top() - offset_circle_size/1.75 + overlap,
-        offset_circle_size,
-        offset_circle_size
-      );
-
-      p.setPen(QPen(QColor(77, 77, 77, 255), 6));
-      p.setBrush(QColor(0, 0, 0, alpha));
-      p.drawEllipse(offset_circle_rect);
-
-      p.setFont(InterFont(offset_circle_size * speedLimitSubTextFactor, QFont::Bold));
-      p.setPen(QColor(255, 255, 255, alpha));
-      p.drawText(offset_circle_rect, Qt::AlignCenter, speedLimitSubText);
-    }
-  } else {
-    // US/Canada MUTCD style sign
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(255, 255, 255, alpha));
-    p.drawRoundedRect(sign_rect, 32, 32);
-
-    // Inner border with violation color coding
-    QRect inner_rect = sign_rect.adjusted(10, 10, -10, -10);
-    QColor border_color = QColor(0, 0, 0, alpha);
-
-    p.setPen(QPen(border_color, 4));
-    p.setBrush(QColor(255, 255, 255, alpha));
-    p.drawRoundedRect(inner_rect, 22, 22);
-
-    // "SPEED LIMIT" text
-    p.setFont(InterFont(40, QFont::DemiBold));
-    p.setPen(QColor(0, 0, 0, alpha));
-    p.drawText(inner_rect.adjusted(0, 2, 0, 0), Qt::AlignTop | Qt::AlignHCenter, tr("SPEED"));
-    p.drawText(inner_rect.adjusted(0, 42, 0, 0), Qt::AlignTop | Qt::AlignHCenter, tr("LIMIT"));
-
-    // Speed value with color coding
-    p.setFont(InterFont(90, QFont::Bold));
-
-    p.setPen(speed_color);
-    p.drawText(inner_rect.adjusted(0, 80, 0, 0), Qt::AlignTop | Qt::AlignHCenter, speedLimitStr);
-
-    // Offset value in small box
-    if (!speedLimitSubText.isEmpty() && hasSpeedLimit) {
-      int offset_box_size = sign_rect.width() * 0.4;
-      int overlap = offset_box_size * 0.25;
-      QRect offset_box_rect(
-        sign_rect.right() - offset_box_size/1.5 + overlap,
-        sign_rect.top() - offset_box_size/1.25 + overlap,
-        offset_box_size,
-        offset_box_size
-      );
-
-      int corner_radius = offset_box_size * 0.2;
-      p.setPen(QPen(QColor(77, 77, 77, 255), 6));
-      p.setBrush(QColor(0, 0, 0, alpha));
-      p.drawRoundedRect(offset_box_rect, corner_radius, corner_radius);
-
-      p.setFont(InterFont(offset_box_size * speedLimitSubTextFactor, QFont::Bold));
-      p.setPen(QColor(255, 255, 255, alpha));
-      p.drawText(offset_box_rect, Qt::AlignCenter, speedLimitSubText);
-    }
+    p.setFont(InterFont(offset_box_size * speedLimitSubTextFactor, QFont::Bold));
+    p.setPen(QColor(255, 255, 255, alpha));
+    p.drawText(offset_box_rect, Qt::AlignCenter, speedLimitSubText);
   }
 }
 
