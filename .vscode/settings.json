@@ -23,8 +23,5 @@
     "system/**",
     "third_party/**",
     "tools/**",
-  ],
-  "files.associations": {
-    "safety_declarations.h": "c"
-  }
+  ]
 }
