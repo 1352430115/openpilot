@@ -149,11 +149,11 @@ void LongitudinalPanel::refresh(bool _offroad) {
       SmartCruiseControlVision->setEnabled(true);
       SmartCruiseControlMap->setEnabled(true);
     } else {
-      params.remove("CustomAccIncrementsEnabled");
+      //params.remove("CustomAccIncrementsEnabled");
       params.remove("DynamicExperimentalControl");
       params.remove("SmartCruiseControlVision");
       params.remove("SmartCruiseControlMap");
-      customAccIncrement->setEnabled(false);
+      customAccIncrement->setEnabled(true);
       dynamicExperimentalControl->setEnabled(false);
       SmartCruiseControlVision->setEnabled(false);
       SmartCruiseControlMap->setEnabled(false);
@@ -188,7 +188,7 @@ void LongitudinalPanel::refresh(bool _offroad) {
         customAccIncrement->setDescription(accEnabledDescription);
       }
     } else {
-      customAccIncrement->toggleFlipped(false);
+      //customAccIncrement->toggleFlipped(false);
       customAccIncrement->setDescription(accNoLongDescription);
       customAccIncrement->showDescription();
     }
