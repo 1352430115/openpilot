@@ -145,7 +145,6 @@ void LongitudinalPanel::refresh(bool _offroad) {
     if (has_longitudinal_control || has_icbm) {
       // enable Custom ACC Increments when long is available and is not PCM cruise
       customAccIncrement->setEnabled(((has_longitudinal_control && !is_pcm_cruise) || has_icbm) && offroad);
-      customAccIncrement->setEnabled(offroad);
       dynamicExperimentalControl->setEnabled(has_longitudinal_control);
       SmartCruiseControlVision->setEnabled(true);
       SmartCruiseControlMap->setEnabled(true);
@@ -189,7 +188,7 @@ void LongitudinalPanel::refresh(bool _offroad) {
         customAccIncrement->setDescription(accEnabledDescription);
       }
     } else {
-      //customAccIncrement->toggleFlipped(false);
+      customAccIncrement->toggleFlipped(false);
       customAccIncrement->setDescription(accNoLongDescription);
       customAccIncrement->showDescription();
     }
