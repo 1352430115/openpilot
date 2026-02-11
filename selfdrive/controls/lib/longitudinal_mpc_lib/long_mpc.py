@@ -39,7 +39,7 @@ J_EGO_COST = 5.
 A_CHANGE_COST = 200.
 DANGER_ZONE_COST = 100.
 CRASH_DISTANCE = .25
-LEAD_DANGER_FACTOR = 0.75
+LEAD_DANGER_FACTOR = 0.375
 LIMIT_COST = 1e6
 ACADOS_SOLVER_TYPE = 'SQP_RTI'
 
@@ -83,7 +83,7 @@ def get_stopped_equivalence_factor(v_lead):
   return (v_lead**2) / (2 * COMFORT_BRAKE)
 
 def get_safe_obstacle_distance(v_ego, t_follow):
-  return (v_ego**2) / (2 * COMFORT_BRAKE) + t_follow * v_ego + STOP_DISTANCE
+  return 0.5 * ((v_ego**2) / (2 * COMFORT_BRAKE) + t_follow * v_ego + STOP_DISTANCE)
 
 def gen_long_model():
   model = AcadosModel()
