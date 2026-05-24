@@ -338,9 +338,22 @@ class LongitudinalMpc:
     self.source = MPC_SOURCES[np.argmin(x_obstacles[0])]
 
     self.yref[:,:] = 0.0
-    
-    self.yref[:, 3] = -5e-4
-    
+
+    # Dynamic closing-speed-based coasting bias
+    lead = radarstate.leadOne
+
+    bias = 0.0
+
+    if lead.status:
+      # relative speed (m/s)
+      v_rel = v_ego - lead.vLead
+
+      # only activate when approaching slower lead
+      if v_ego > 8.0 and v_rel > 0.0:
+        bias = np.interp(v_rel,[0.0, 4.0, 8.0],[0.0, -3e-4, -8e-4])
+                                      
+    self.yref[:, 3] = bias
+ 
     for i in range(N):
       self.solver.set(i, "yref", self.yref[i])
     self.solver.set(N, "yref", self.yref[N][:COST_E_DIM])
