@@ -338,6 +338,9 @@ class LongitudinalMpc:
     self.source = MPC_SOURCES[np.argmin(x_obstacles[0])]
 
     self.yref[:,:] = 0.0
+    
+    self.yref[:, 3] = -1e-3
+    
     for i in range(N):
       self.solver.set(i, "yref", self.yref[i])
     self.solver.set(N, "yref", self.yref[N][:COST_E_DIM])
