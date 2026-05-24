@@ -59,7 +59,7 @@ class SoftwareLayoutSP(SoftwareLayout):
 
     if HARDWARE.get_device_type() == "tici":
       top_level_branches = ["release-tici", "staging-tici"]
-      branches = [b for b in branches if b.endswith("-tici")]
+      #branches = [b for b in branches if b.endswith("-tici")]
 
     top_level_nodes = [TreeNode(b, {'display_name': b}) for b in top_level_branches if b in branches]
     remaining_branches = [b for b in branches if b not in top_level_branches]
