@@ -37,7 +37,7 @@ X_EGO_OBSTACLE_COST = 3.5
 X_EGO_COST = 0.
 V_EGO_COST = 0.
 A_EGO_COST = 0.15
-J_EGO_COST = 6.
+J_EGO_COST = 7.
 A_CHANGE_COST = 220.
 DANGER_ZONE_COST = 100.
 CRASH_DISTANCE = .25
@@ -339,7 +339,7 @@ class LongitudinalMpc:
 
     self.yref[:,:] = 0.0
     
-    self.yref[:, 3] = -1e-3
+    self.yref[:, 3] = -5e-4
     
     for i in range(N):
       self.solver.set(i, "yref", self.yref[i])
