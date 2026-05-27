@@ -345,16 +345,16 @@ class LongitudinalMpc:
     bias = 0.0
 
     if lead.status:
-      # relative speed (m/s)
-      v_rel = v_ego - lead.vLead
+      # 減速力道可改 弱0.0, -0.01, -0.03 / 中0.0, -0.02, -0.05 / 強0.0, -0.03, -0.08
+      v_rel = v_ego - lead.vLead 
 
       if v_ego > 8.0 and v_rel > 0.0:
         bias = np.interp(v_rel, [0.0, 4.0, 8.0], [0.0, -0.02, -0.05])
 
         d = lead.dRel
 
-        # reduce effect at close range
-        bias *= np.interp(d,[20.0, 50.0, 80.0],[0.0, 0.3, 1.0])
+        # 降低油門力道0~50m 0% 50~75 30% 75m以上 100% 
+        bias *= np.interp(d, [20.0, 50.0, 75.0], [0.0, 0.3, 1.0])
 
     self.yref[:, 3] = bias
  
