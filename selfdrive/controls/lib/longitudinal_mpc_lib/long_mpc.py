@@ -33,12 +33,12 @@ COST_E_DIM = 5
 COST_DIM = COST_E_DIM + 1
 CONSTR_DIM = 4
 
-X_EGO_OBSTACLE_COST = 3.2
+X_EGO_OBSTACLE_COST = 3.
 X_EGO_COST = 0.
 V_EGO_COST = 0.
 A_EGO_COST = 0.15
-J_EGO_COST = 8.
-A_CHANGE_COST = 220.
+J_EGO_COST = 6.
+A_CHANGE_COST = 200.
 DANGER_ZONE_COST = 100.
 CRASH_DISTANCE = .25
 LEAD_DANGER_FACTOR = 0.75
@@ -62,7 +62,7 @@ MIN_X_LEAD_FACTOR = 0.5
 
 def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
   if personality==log.LongitudinalPersonality.relaxed:
-    return 1.0
+    return 0.8
   elif personality==log.LongitudinalPersonality.standard:
     return 1.0
   elif personality==log.LongitudinalPersonality.aggressive:
