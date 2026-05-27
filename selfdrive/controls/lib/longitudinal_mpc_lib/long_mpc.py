@@ -348,10 +348,14 @@ class LongitudinalMpc:
       # relative speed (m/s)
       v_rel = v_ego - lead.vLead
 
-      # only activate when approaching slower lead
       if v_ego > 8.0 and v_rel > 0.0:
-        bias = np.interp(v_rel,[0.0, 4.0, 8.0],[0.0, -0.03, -0.08])
-                                      
+        bias = np.interp(v_rel,[0.0, 4.0, 8.0],[0.0, -0.02, -0.05])
+
+        d = lead.dRel
+
+        # reduce effect at close range
+        bias *= np.interp(d,[20.0, 50.0, 80.0],[0.0, 0.3, 1.0])
+                                                                              
     self.yref[:, 3] = bias
  
     for i in range(N):
