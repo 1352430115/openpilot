@@ -350,7 +350,7 @@ class LongitudinalMpc:
 
       # only activate when approaching slower lead
       if v_ego > 8.0 and v_rel > 0.0:
-        bias = np.interp(v_rel,[0.0, 4.0, 8.0],[0.0, -0.01, -0.03])
+        bias = np.interp(v_rel,[0.0, 4.0, 8.0],[0.0, -0.03, -0.08])
                                       
     self.yref[:, 3] = bias
  
