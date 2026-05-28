@@ -71,7 +71,7 @@ def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
     raise NotImplementedError("Longitudinal personality not supported")
 
 
-def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard):
+def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, v_ego=0.0):
   if personality==log.LongitudinalPersonality.relaxed:
     return 1.55
   elif personality==log.LongitudinalPersonality.standard:
@@ -329,8 +329,8 @@ class LongitudinalMpc:
     return np.column_stack((x_lead_mpc, v_lead_mpc))
 
   def update(self, v_cruise, modelV2, radarstate, personality=log.LongitudinalPersonality.standard):
+    v_ego = self.x0[1] 
     t_follow = get_T_FOLLOW(personality, v_ego)
-    v_ego = self.x0[1]
     model_leads = modelV2.leadsV3
     self.status = model_leads[0].prob > 0.5 or model_leads[1].prob > 0.5
 
