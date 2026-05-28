@@ -77,9 +77,28 @@ def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard):
   elif personality==log.LongitudinalPersonality.standard:
     return 1.25
   elif personality==log.LongitudinalPersonality.aggressive:
-    return 0.95
+    v_kph = v_ego * 3.6
+
+    if v_kph < 30:
+      return 1.15
+    elif v_kph < 70:
+      return 0.95
+    else:
+      return 0.85
   else:
     raise NotImplementedError("Longitudinal personality not supported")
+    # 0~30 km/h  : 1.15
+# 低速時保留較大車距，減少走走停停的不適感，
+# 讓市區跟車更柔順自然。
+#
+# 30~70 km/h : 0.95
+# 維持原本較積極的跟車設定，
+# 兼顧反應速度與舒適性。
+#
+# 70+ km/h   : 0.85
+# 高速時縮短跟車距離，
+# 提升超車與高速巡航時的靈敏度，
+# 降低過度保守造成的拖速感。
 
 def get_stopped_equivalence_factor(v_lead):
   return (v_lead**2) / (2 * COMFORT_BRAKE)
@@ -177,7 +196,7 @@ def gen_long_ocp():
 
   x0 = np.zeros(X_DIM)
   ocp.constraints.x0 = x0
-  ocp.parameter_values = np.array([-1.2, 1.2, 0.0, 0.0, get_T_FOLLOW(), LEAD_DANGER_FACTOR])
+  ocp.parameter_values = np.array([-1.2, 1.2, 0.0, 0.0, get_T_FOLLOW(v_ego=0.0), LEAD_DANGER_FACTOR])
 
 
   # We put all constraint cost weights to 0 and only set them at runtime
