@@ -310,7 +310,7 @@ class LongitudinalMpc:
     return np.column_stack((x_lead_mpc, v_lead_mpc))
 
   def update(self, v_cruise, modelV2, radarstate, personality=log.LongitudinalPersonality.standard):
-    t_follow = get_T_FOLLOW(personality)
+    t_follow = get_T_FOLLOW(personality, v_ego)
     v_ego = self.x0[1]
     model_leads = modelV2.leadsV3
     self.status = model_leads[0].prob > 0.5 or model_leads[1].prob > 0.5
