@@ -36,8 +36,8 @@ CONSTR_DIM = 4
 X_EGO_OBSTACLE_COST = 3.
 X_EGO_COST = 0.
 V_EGO_COST = 0.
-A_EGO_COST = 0.15
-J_EGO_COST = 6.
+A_EGO_COST = 0.
+J_EGO_COST = 5.
 A_CHANGE_COST = 200.
 DANGER_ZONE_COST = 100.
 CRASH_DISTANCE = .25
@@ -66,7 +66,7 @@ def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
   elif personality==log.LongitudinalPersonality.standard:
     return 1.0
   elif personality==log.LongitudinalPersonality.aggressive:
-    return 0.8
+    return 0.5
   else:
     raise NotImplementedError("Longitudinal personality not supported")
 
@@ -79,7 +79,7 @@ def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, v_ego=0.0):
   elif personality==log.LongitudinalPersonality.aggressive:
     v_kph = v_ego * 3.6
 
-    if v_kph < 30:
+    if v_kph < 25:
       return 1.15
     elif v_kph < 70:
       return 0.95
@@ -87,11 +87,11 @@ def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, v_ego=0.0):
       return 0.85
   else:
     raise NotImplementedError("Longitudinal personality not supported")
-    # 0~30 km/h  : 1.15
+    # 0~25 km/h  : 1.15
 # 低速時保留較大車距，減少走走停停的不適感，
 # 讓市區跟車更柔順自然。
 #
-# 30~70 km/h : 0.95
+# 25~70 km/h : 0.95
 # 維持原本較積極的跟車設定，
 # 兼顧反應速度與舒適性。
 #
