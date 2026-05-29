@@ -361,10 +361,7 @@ class LongitudinalMpc:
       if v_ego > 8.0 and v_rel > 0.0:
         d = lead.dRel
         # 速差越大，提早收油越多
-        # 速差 10 km/h -> 約降 4 km/h
-        # 速差 20 km/h -> 約降 8  km/h
-        # 速差 40 km/h -> 約降 17 km/h 
-        speed_offset = min(v_rel * 1.5, 50.0) #1.5的數值越大,降速越多
+        speed_offset = min(v_rel * 1.0, 50.0) #1.5的數值減速感重
         speed_offset *= np.interp(
           d,
           [35.0, 50.0, 65.0], #距離/米以上,強度0~100%
