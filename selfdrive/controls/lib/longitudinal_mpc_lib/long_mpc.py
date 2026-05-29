@@ -350,32 +350,48 @@ class LongitudinalMpc:
     v_lower = v_ego + (T_IDXS * CRUISE_MIN_ACCEL * 1.05)
     # TODO does this make sense when max_a is negative?
     v_upper = v_ego + (T_IDXS * CRUISE_MAX_ACCEL * 1.05)
-    v_cruise_clipped = np.clip(v_cruise * np.ones(N+1), v_lower, v_upper)
-    cruise_obstacle = np.cumsum(T_DIFFS * v_cruise_clipped) + get_safe_obstacle_distance(v_cruise_clipped, t_follow)
+    coast_speed = v_cruise
+    speed_offset = 0.0
 
-    x_obstacles = np.column_stack([lead_0_obstacle, lead_1_obstacle, cruise_obstacle])
+    lead = radarstate.leadOne
+
+    if lead.status:
+      v_rel = v_ego - lead.vLead
+
+      if v_ego > 8.0 and v_rel > 0.0:
+        d = lead.dRel
+        # 速差越大，提早收油越多
+        # 速差 10 km/h -> 約降 4 km/h
+        # 速差 20 km/h -> 約降 8  km/h
+        # 速差 40 km/h -> 約降 17 km/h 
+        speed_offset = min(v_rel * 1.5, 50.0) #1.5的數值越大,降速越多
+        speed_offset *= np.interp(
+          d,
+          [30.0, 50.0, 75.0],
+          [0.0, 0.3, 1.0]
+        )
+
+    coast_speed -= speed_offset / 3.6
+
+    v_cruise_clipped = np.clip(
+      coast_speed * np.ones(N + 1),
+      v_lower,
+      v_upper
+    )
+    cruise_obstacle = np.cumsum(T_DIFFS * v_cruise_clipped) + \
+      get_safe_obstacle_distance(v_cruise_clipped, t_follow)
+
+    x_obstacles = np.column_stack([
+      lead_0_obstacle,
+      lead_1_obstacle,
+      cruise_obstacle
+    ])
+
     self.source = MPC_SOURCES[np.argmin(x_obstacles[0])]
 
     self.yref[:,:] = 0.0
 
-    # Dynamic closing-speed-based coasting bias
-    lead = radarstate.leadOne
-
-    bias = 0.0
-
-    if lead.status:
-      # 減速力道可改 弱0.0, -0.01, -0.03 / 中0.0, -0.02, -0.05 / 強0.0, -0.03, -0.08
-      v_rel = v_ego - lead.vLead 
-
-      if v_ego > 8.0 and v_rel > 0.0:
-        bias = np.interp(v_rel, [0.0, 4.0, 8.0], [0.0, -0.02, -0.05])
-
-        d = lead.dRel
-
-        # 降低油門效果：30m以下=0%、30m~50m=0~30%、50m~75m=30~100%、75m以上=維持100%
-        bias *= np.interp(d, [30.0, 50.0, 75.0], [0.0, 0.3, 1.0])
-
-    self.yref[:, 3] = bias
+    #self.yref[:, 3] = bias
  
     for i in range(N):
       self.solver.set(i, "yref", self.yref[i])
