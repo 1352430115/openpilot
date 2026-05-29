@@ -367,7 +367,7 @@ class LongitudinalMpc:
         speed_offset = min(v_rel * 1.5, 50.0) #1.5的數值越大,降速越多
         speed_offset *= np.interp(
           d,
-          [30.0, 50.0, 75.0],
+          [35.0, 50.0, 65.0], #距離/米以上,強度0~100%
           [0.0, 0.3, 1.0]
         )
 
