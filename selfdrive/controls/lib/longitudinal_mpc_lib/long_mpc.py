@@ -368,7 +368,7 @@ class LongitudinalMpc:
         # 65m以上   = 100%介入
         # 速差越大，巡航目標下降越多，
         # 使減速過程更接近真人駕駛提早鬆油門的習慣。
-        speed_offset = min(v_rel * 0.5, 50.0) #1.5的數值減速感重
+        speed_offset = min(v_rel * 0.8, 50.0) #1.5的數值減速感重
         #speed_offset *= np.interp(
           #d,
           #[0.0, 30.0, 50.0] #[35.0, 65.0], #距離/米以上,強度0~100%
