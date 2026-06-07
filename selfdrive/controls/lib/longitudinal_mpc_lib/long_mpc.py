@@ -66,7 +66,7 @@ def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
   elif personality==log.LongitudinalPersonality.standard:
     return 1.0
   elif personality==log.LongitudinalPersonality.aggressive:
-    return 0.7
+    return 0.8
   else:
     raise NotImplementedError("Longitudinal personality not supported")
 
@@ -79,8 +79,8 @@ def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, v_ego=0.0):
   elif personality==log.LongitudinalPersonality.aggressive:
     v_kph = v_ego * 3.6
 
-    if v_kph < 25:
-      return 1.15
+    if v_kph < 30:
+      return 1.25
     elif v_kph < 70:
       return 0.95
     else:
@@ -368,7 +368,7 @@ class LongitudinalMpc:
         speed_offset *= np.interp(
           d,
           [30.0, 45.0, 60.0],
-          [0.0, 0.5, 1.0]
+          [0.0, 0.8, 1.0]
         )
 
     coast_speed -= speed_offset / 3.6
