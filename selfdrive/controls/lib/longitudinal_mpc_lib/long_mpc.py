@@ -362,7 +362,7 @@ class LongitudinalMpc:
       else:
         allowed_speed = lead.vLead + (5.0 / 3.6)
 
-    coast_speed = min(coast_speed, allowed_speed)
+      coast_speed = min(coast_speed, allowed_speed)
 
     v_cruise_clipped = np.clip(
       coast_speed * np.ones(N + 1),
