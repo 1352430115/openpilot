@@ -355,13 +355,11 @@ class LongitudinalMpc:
     lead = radarstate.leadOne
     allowed_speed = coast_speed
 
-    if lead.status and v_ego > 8.0:
+    if v_ego > 8.0 and v_rel > 0.0:
       d = lead.dRel
 
-      if d >= 40.0:
-        allowed_speed = lead.vLead + (10.0 / 3.6)
-      else:
-        allowed_speed = lead.vLead + (5.0 / 3.6)
+      buffer_speed_kph = np.interp(d,[30.0, 50.0],[5.0, 10.0])
+      allowed_speed = lead.vLead + (buffer_speed_kph / 3.6)
 
       coast_speed = min(coast_speed, allowed_speed)
 
