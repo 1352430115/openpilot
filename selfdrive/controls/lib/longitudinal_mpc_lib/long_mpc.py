@@ -355,13 +355,21 @@ class LongitudinalMpc:
     lead = radarstate.leadOne
     allowed_speed = coast_speed
 
-    if v_ego > 8.0 and v_rel > 0.0:
-      d = lead.dRel
+    if lead.status:
+      v_rel = v_ego - lead.vLead
 
-      buffer_speed_kph = np.interp(d,[30.0, 50.0],[5.0, 10.0])
-      allowed_speed = lead.vLead + (buffer_speed_kph / 3.6)
+      if v_ego > 8.0 and v_rel > 0.0:
+        d = lead.dRel
 
-      coast_speed = min(coast_speed, allowed_speed)
+        buffer_speed_kph = np.interp(
+          d,
+          [30.0, 50.0],
+          [5.0, 10.0]
+        )
+
+        allowed_speed = lead.vLead + (buffer_speed_kph / 3.6)
+
+        coast_speed = min(coast_speed, allowed_speed)
 
     v_cruise_clipped = np.clip(
       coast_speed * np.ones(N + 1),
