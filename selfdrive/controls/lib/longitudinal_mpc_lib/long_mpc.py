@@ -358,7 +358,7 @@ class LongitudinalMpc:
     if lead.status:
       v_rel = v_ego - lead.vLead
 
-      if v_ego > 8.0 and v_rel > 0.0:
+      if v_ego > 8.0 and v_rel > (2.0 / 3.6)
         d = lead.dRel
 
         buffer_speed_kph = np.interp(
