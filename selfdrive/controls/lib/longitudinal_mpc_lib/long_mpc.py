@@ -352,7 +352,7 @@ class LongitudinalMpc:
     v_upper = v_ego + (T_IDXS * CRUISE_MAX_ACCEL * 1.05)
     coast_speed = v_cruise
 
-    lead = radarstate.leadOne
+    allowed_speed = coast_speed
 
     if lead.status and v_ego > 8.0:
       d = lead.dRel
