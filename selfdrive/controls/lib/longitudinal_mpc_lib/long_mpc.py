@@ -363,8 +363,8 @@ class LongitudinalMpc:
 
         buffer_speed_kph = np.interp(
           d,
-          [30.0, 50.0],
-          [5.0, 10.0]
+          [30.0, 40.0, 50.0, 60.0, 70.0],
+          [5.0, 10.0, 15.0, 20.0, 25.0]
         )
 
         allowed_speed = lead.vLead + (buffer_speed_kph / 3.6)
