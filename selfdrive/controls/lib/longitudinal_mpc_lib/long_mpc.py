@@ -79,7 +79,7 @@ def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, v_ego=0.0):
   elif personality==log.LongitudinalPersonality.aggressive:
     v_kph = v_ego * 3.6
 
-    if v_kph < 30:
+    if v_kph < 40:
       return 1.25
     elif v_kph < 70:
       return 0.95
@@ -367,7 +367,7 @@ class LongitudinalMpc:
           speed_offset *= np.interp(
             d,
             [25.0, 30.0, 45.0, 60.0],
-            [0.0,  0.8,  0.7,  0.6]
+            [0.9,  0.8,  0.7,  0.6]
           )
         
 
