@@ -81,21 +81,21 @@ def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, v_ego=0.0):
 
     if v_kph < 40:
       return 1.25
-    elif v_kph < 70:
+    elif v_kph < 80:
       return 0.95
     else:
       return 0.85
   else:
     raise NotImplementedError("Longitudinal personality not supported")
-    # 0~25 km/h  : 1.15
+# 0~40 km/h  : 1.25
 # 低速時保留較大車距，減少走走停停的不適感，
 # 讓市區跟車更柔順自然。
 #
-# 25~70 km/h : 0.95
+# 40~80 km/h : 0.95
 # 維持原本較積極的跟車設定，
 # 兼顧反應速度與舒適性。
 #
-# 70+ km/h   : 0.85
+# 80+ km/h   : 0.85
 # 高速時縮短跟車距離，
 # 提升超車與高速巡航時的靈敏度，
 # 降低過度保守造成的拖速感。
@@ -366,8 +366,8 @@ class LongitudinalMpc:
           
           speed_offset *= np.interp(
             d,
-            [25.0, 30.0, 45.0, 60.0],
-            [0.9,  0.8,  0.7,  0.6]
+            [25.0, 35.0, 45.0, 60.0, 80.0, 90.0],
+            [0.9,  0.8,  0.7,  0.6,  0.5,  0.4]
           )
         
 
