@@ -351,25 +351,27 @@ class LongitudinalMpc:
     # TODO does this make sense when max_a is negative?
     v_upper = v_ego + (T_IDXS * CRUISE_MAX_ACCEL * 1.05)
     coast_speed = v_cruise
-    
+    speed_offset = 0.0
+
     lead = radarstate.leadOne
-    allowed_speed = coast_speed
 
     if lead.status:
       v_rel = v_ego - lead.vLead
 
-      if v_ego > 8.0 and v_rel > (2.0 / 3.6):
+      if v_ego > 8.0 and v_rel > 0.0:
         d = lead.dRel
+        # 25m內完全交給MPC
+        if d > 25.0:
+          speed_offset = min(v_rel * 1.0, 50.0)
+          
+          speed_offset *= np.interp(
+            d,
+            [25.0, 30.0, 45.0, 60.0],
+            [0.0,  0.8,  0.7,  0.6]
+          )
+        
 
-        buffer_speed_kph = np.interp(
-          d,
-          [30.0, 40.0, 50.0, 60.0, 70.0],
-          [5.0, 10.0, 15.0, 20.0, 25.0]
-        )
-
-        allowed_speed = lead.vLead + (buffer_speed_kph / 3.6)
-
-        coast_speed = min(coast_speed, allowed_speed)
+          coast_speed -= speed_offset / 3.6
 
     v_cruise_clipped = np.clip(
       coast_speed * np.ones(N + 1),
