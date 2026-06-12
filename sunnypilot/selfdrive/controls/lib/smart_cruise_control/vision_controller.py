@@ -40,7 +40,7 @@ _ENTERING_SMOOTH_DECEL_BP = [1.1, 3.]  # absolute value of lat acc ahead
 # depending on the current lateral acceleration of the vehicle.
 #_TURNING_ACC_V = [0.25, 0.05,/0.08, -0.1/-0.08]  # acc value 持續大彎中加速度不夠,特大彎減速過多
 _TURNING_ACC_V = [0.26, 0.10, -0.1]  # acc value
-_TURNING_ACC_BP = [1.5, 2.3, 3.]  # absolute value of current lat acc
+_TURNING_ACC_BP = [1.5, 2.3, 4.]  # absolute value of current lat acc
 
 _LEAVING_ACC = 0.7  # Conformable acceleration to regain speed while leaving a turn.
 
