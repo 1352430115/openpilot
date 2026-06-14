@@ -366,14 +366,14 @@ class LongitudinalMpc:
           allowed_v_rel = np.interp(
             d,
             [30.0, 40.0, 55.0, 80.0, 90.0],
-            [5.0,  10.0,  20.0,  30.0,  40.0]
+            [5.0,  10.0,  20.0,  30.0,  35.0]
           )
         
-          effective_v_rel = max(0.0, v_rel - allowed_v_rel)
+          target_speed = lead.vLead + allowed_v_rel
 
           coast_speed = min(
             coast_speed,
-            lead.vLead + effective_v_rel
+            target_speed
           )
 
     v_cruise_clipped = np.clip(
