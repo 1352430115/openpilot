@@ -360,18 +360,21 @@ class LongitudinalMpc:
 
       if v_ego > 8.0 and v_rel > 0.0:
         d = lead.dRel
-        # 25m內完全交給MPC
-        if d > 25.0:
-          speed_offset = min(v_rel * 1.0, 50.0)
+        # 20m內完全交給MPC
+        if d > 20.0:
           
-          speed_offset *= np.interp(
+          allowed_v_rel = np.interp(
             d,
-            [25.0, 35.0, 45.0, 60.0, 80.0, 90.0],
-            [0.9,  0.8,  0.7,  0.6,  0.5,  0.4]
+            [30.0, 40.0, 55.0, 80.0, 90.0],
+            [5.0,  10.0,  20.0,  30.0,  40.0]
           )
         
+          effective_v_rel = max(0.0, v_rel - allowed_v_rel)
 
-          coast_speed -= speed_offset / 3.6
+          coast_speed = min(
+            coast_speed,
+            lead.vLead + effective_v_rel
+          )
 
     v_cruise_clipped = np.clip(
       coast_speed * np.ones(N + 1),
