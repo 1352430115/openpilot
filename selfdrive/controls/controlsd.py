@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import math
+import numpy as np
 from numbers import Number
 
 from cereal import car, log
@@ -139,6 +140,36 @@ class Controls(ControlsExt):
       new_desired_curvature = self.sm['lateralManeuverPlan'].desiredCurvature if CC.latActive else self.curvature
     else:
       new_desired_curvature = model_v2.action.desiredCurvature if CC.latActive else self.curvature
+
+    # ── 右側車道線外停車抑制 ────────────────────────────────────────
+    # 僅在模型想往左偏、且右側車道線可見、且車道線位置正常時抑制。
+    # 車道線縮窄（障礙物真的超過白線）時 right_y 會下降，抑制自動解除。
+    #
+    # 數值調整說明：
+    #   RIGHT_LANE_NORMAL_MIN  = 1.6m → 低於此值代表障礙物超過白線，完全不抑制
+    #   RIGHT_LANE_SUPPRESS_START = 1.8m → 高於此值代表線外停車，完全抑制
+    #   兩者之間線性過渡，差距 0.2m 讓行為平滑
+    #   若實測發現正常車道線 y 值偏低，可把兩個數值同步下調 0.1~0.2m
+    RIGHT_LANE_IDX = 2
+    RIGHT_LANE_NORMAL_MIN = 1.6      # m，低於此允許避讓
+    RIGHT_LANE_SUPPRESS_START = 1.8  # m，高於此完全抑制
+
+    right_lane_visible = (len(model_v2.laneLineProbs) > RIGHT_LANE_IDX and
+                          model_v2.laneLineProbs[RIGHT_LANE_IDX] > 0.5)
+    model_wants_left = new_desired_curvature < self.desired_curvature
+
+    if CC.latActive and right_lane_visible and model_wants_left and len(model_v2.laneLines) > RIGHT_LANE_IDX:
+      right_y = model_v2.laneLines[RIGHT_LANE_IDX].y[0]
+      if right_y >= RIGHT_LANE_NORMAL_MIN:
+        suppress = float(np.clip(
+          (right_y - RIGHT_LANE_NORMAL_MIN) / (RIGHT_LANE_SUPPRESS_START - RIGHT_LANE_NORMAL_MIN),
+          0.0, 1.0
+        ))
+        new_desired_curvature = (1.0 - suppress) * new_desired_curvature + suppress * self.desired_curvature
+        cloudlog.debug(f"roadside_suppress: right_y={right_y:.3f} suppress={suppress:.2f} "
+                       f"curv_raw={model_v2.action.desiredCurvature:.4f} curv_out={new_desired_curvature:.4f}")
+    # ────────────────────────────────────────────────────────────────
+
     self.desired_curvature, curvature_limited = clip_curvature(CS.vEgo, self.desired_curvature, new_desired_curvature, lp.roll)
     lat_delay = self.sm["liveDelay"].lateralDelay + LAT_SMOOTH_SECONDS
 
