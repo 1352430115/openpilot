@@ -362,7 +362,7 @@ class LongitudinalMpc:
       if v_ego > 8.0 and v_rel > 0.0:
         d = lead.dRel
         # 20m內完全交給MPC
-        if d > 20.0:
+        if d > 25.0:
           
           allowed_v_rel = np.interp(
             d,
