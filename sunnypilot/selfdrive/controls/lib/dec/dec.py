@@ -183,6 +183,7 @@ class DynamicExperimentalController:
     self._endpoint_x = float('inf')
     self._expected_distance = 0.0
     self._trajectory_valid = False
+    self._curve_detected = False
 
   def _read_params(self) -> None:
     if self._frame % int(1. / DT_MDL) == 0:
@@ -228,6 +229,15 @@ class DynamicExperimentalController:
 
     # Slow down detection
     self._calculate_slow_down(md)
+
+    # Curve detection
+    self._curve_detected = False
+    try:
+      if len(md.orientationRate.z) > 0:
+        max_yaw = max(abs(x) for x in md.orientationRate.z)
+        self._curve_detected = max_yaw > 0.08
+    except Exception:
+      pass
 
     # Slowness detection
     if not (self._standstill_count > 5) and not self._has_slow_down:
@@ -298,9 +308,9 @@ class DynamicExperimentalController:
     self._slow_down_filter.add_data(urgency)
     urgency_filtered = self._slow_down_filter.get_value() or 0.0
 
-    # Update state with lower threshold for better stop detection
-    self._has_slow_down = urgency_filtered > (WMACConstants.SLOW_DOWN_PROB * 0.8)
-    self._urgency = urgency_filtered
+    # User customization: disable red-light/intersection slowdown switching
+    self._has_slow_down = False
+    self._urgency = 0.0
 
   def _radarless_mode(self) -> None:
     """Radarless mode decision logic with emergency handling."""
@@ -342,9 +352,19 @@ class DynamicExperimentalController:
       self._mode_manager.request_mode('blended', confidence=1.0, emergency=True)
       return
 
-    # If lead detected and not in standstill: always use ACC
+    # Curves -> blended(E2E)
+    if self._curve_detected:
+      self._mode_manager.request_mode('blended', confidence=1.0)
+      return
+
+    # Lead distance logic
     if self._has_lead_filtered and not (self._standstill_count > 3):
-      self._mode_manager.request_mode('acc', confidence=1.0)
+      lead_dist = getattr(sm['radarState'].leadOne, 'dRel', 0.0)
+
+      if lead_dist > 60.0:
+        self._mode_manager.request_mode('blended', confidence=1.0)
+      else:
+        self._mode_manager.request_mode('acc', confidence=1.0)
       return
 
     # Slow down scenarios: emergency for high urgency, normal for lower urgency
