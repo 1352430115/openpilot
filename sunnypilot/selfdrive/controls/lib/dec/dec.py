@@ -370,10 +370,10 @@ class DynamicExperimentalController:
         ttc = lead_dist / abs(lead_vrel)
 
       if self._e2e_ttc_mode:
-        if ttc > 15.0:
+        if ttc > 18.0:
           self._e2e_ttc_mode = False
       else:
-        if ttc < 12.0:
+        if ttc < 15.0:
           self._e2e_ttc_mode = True
 
       if self._e2e_ttc_mode:
