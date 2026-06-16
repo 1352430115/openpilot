@@ -1,12 +1,13 @@
 import time
 import pyray as rl
-from cereal import custom
 from openpilot.common.params import Params
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.widgets import Widget
 
-DecState = custom.LongitudinalPlanSP.DynamicExperimentalControl.DynamicExperimentalControlState
+# DynamicExperimentalControlState enum values (from custom.capnp):
+# acc @0, blended @1
+_DEC_STATE_BLENDED = 1
 
 
 class ExpButton(Widget):
@@ -17,7 +18,6 @@ class ExpButton(Widget):
     self._engageable: bool = False
 
     # DEC (Dynamic Experimental Control) state
-    self._dec_enabled: bool = False
     self._dec_active: bool = False
     self._dec_is_blended: bool = False  # True = blended (E2E), False = acc
 
@@ -43,9 +43,9 @@ class ExpButton(Widget):
     # Read DEC state from longitudinalPlanSP if available
     if ui_state.sm.recv_frame.get("longitudinalPlanSP", 0) > 0:
       dec = ui_state.sm["longitudinalPlanSP"].dec
-      self._dec_enabled = dec.enabled
       self._dec_active = dec.active
-      self._dec_is_blended = dec.state == DecState.blended
+      # Compare as int to avoid capnp nested enum path issues
+      self._dec_is_blended = int(dec.state) == _DEC_STATE_BLENDED
 
   def _handle_mouse_release(self, _):
     super()._handle_mouse_release(_)
