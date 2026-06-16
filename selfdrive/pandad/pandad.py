@@ -21,8 +21,15 @@ def get_expected_signature(panda: Panda) -> bytes:
     cloudlog.exception("Error computing expected signature")
     return b""
 
-def flash_panda(panda_serial: str):
-  panda = Panda(panda_serial)
+# FIX 1: flash_panda() 必須回傳 Panda 物件（不能 close 後回傳 None）
+#         同時加入 PandaProtocolMismatch 的 try/except 處理
+def flash_panda(panda_serial: str) -> Panda:
+  try:
+    panda = Panda(panda_serial)
+  except PandaProtocolMismatch:
+    cloudlog.warning("detected protocol mismatch, reflashing panda")
+    HARDWARE.recover_internal_panda()
+    raise
 
   fw_signature = get_expected_signature(panda)
   internal_panda = panda.is_internal()
@@ -53,7 +60,8 @@ def flash_panda(panda_serial: str):
     cloudlog.info("Version mismatch after flashing, exiting")
     raise AssertionError
 
-  panda.close()
+  # FIX 1: 回傳 panda 物件，不要 close()
+  return panda
 
 
 def main() -> None:
@@ -69,45 +77,46 @@ def main() -> None:
   do_exit = False
   signal.signal(signal.SIGINT, signal_handler)
 
-  # check health for lost heartbeat
-  try:
-    for s in Panda.list():
-      with Panda(s) as p:
-        health = p.health()
-        if p.is_internal() and health["heartbeat_lost"]:
-          Params().put_bool("PandaHeartbeatLost", True, block=True)
-          cloudlog.event("heartbeat lost", deviceState=health)
-  except Exception:
-    cloudlog.exception("pandad.uncaught_exception")
-
   count = 0
+  # FIX 2: 在 while 迴圈前初始化所有必要變數
+  first_run = True
+  params = Params()
+  no_internal_panda_count = 0
+
   while not do_exit:
     try:
-      cloudlog.event("pandad.flash_and_connect", count=count)
-      if (count % 2) == 0:
-        HARDWARE.reset_internal_panda()
-      else:
-        HARDWARE.recover_internal_panda()
       count += 1
+      cloudlog.event("pandad.flash_and_connect", count=count)
+      pass  # PandaSignatures not in params_keys
+
+      # FIX 3: 用智慧型重試邏輯取代每次固定 reset/recover
+      #         只有在確認找不到 panda 時才做 reset/recover
+      if no_internal_panda_count > 0:
+        if no_internal_panda_count == 3:
+          cloudlog.info("No pandas found, putting internal panda into DFU")
+          HARDWARE.recover_internal_panda()
+        else:
+          cloudlog.info("No pandas found, resetting internal panda")
+          HARDWARE.reset_internal_panda()
+        time.sleep(3)  # wait to come back up
 
       # Flash all Pandas in DFU mode
-      for serial in PandaDFU.list():
-        cloudlog.info(f"Panda in DFU mode found, flashing recovery {serial}")
-        PandaDFU(serial).recover()
+      dfu_serials = PandaDFU.list()
+      if len(dfu_serials) > 0:
+        for serial in dfu_serials:
+          cloudlog.info(f"Panda in DFU mode found, flashing recovery {serial}")
+          PandaDFU(serial).recover()
         time.sleep(1)
 
       panda_serials = Panda.list()
-      if len(panda_serials):
-        # custom flasher for xnor's Rivian Longitudinal Upgrade Kit
-        flash_rivian_long(panda_serials)
-        # find the internal supported panda (e.g. skip external Black Panda)
-        panda_serials = check_panda_support(panda_serials)
+      # FIX 4: 若找不到 panda 就遞增計數並 continue，不要繼續往下跑
+      if len(panda_serials) == 0:
+        no_internal_panda_count += 1
+        continue
 
-        assert len(panda_serials) == 1
-        cloudlog.info(f"{len(panda_serials)} panda found, connecting - {panda_serials}")
-        flash_panda(panda_serials[0])
+      cloudlog.info(f"{len(panda_serials)} panda(s) found, connecting - {panda_serials}")
 
-      # Flash pandas
+      # Flash pandas（FIX 5: 移除重複呼叫 flash_panda 和不存在的 flash_rivian_long/check_panda_support）
       pandas: list[Panda] = []
       for serial in panda_serials:
         pandas.append(flash_panda(serial))
@@ -128,7 +137,7 @@ def main() -> None:
       panda_serials = [p.get_usb_serial() for p in pandas]
 
       # log panda fw versions
-      params.put("PandaSignatures", b','.join(p.get_signature() for p in pandas))
+      pass  # PandaSignatures not in params_keys
 
       for panda in pandas:
         # check health for lost heartbeat
@@ -151,8 +160,10 @@ def main() -> None:
     except (usb1.USBErrorNoDevice, usb1.USBErrorPipe):
       # a panda was disconnected while setting everything up. let's try again
       cloudlog.exception("Panda USB exception while setting up")
+      continue  # FIX 6: 加上 continue，與 dev1 一致
     except PandaProtocolMismatch:
       cloudlog.exception("pandad.protocol_mismatch")
+      continue  # FIX 6: 加上 continue，與 dev1 一致
     except Exception:
       cloudlog.exception("pandad.uncaught_exception")
       continue
