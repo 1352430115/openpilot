@@ -57,7 +57,7 @@ T_DIFFS = np.diff(T_IDXS, prepend=[0.])
 COMFORT_BRAKE = 2.5
 STOP_DISTANCE = 6.0
 CRUISE_MIN_ACCEL = -1.2
-CRUISE_MAX_ACCEL = 1.6
+CRUISE_MAX_ACCEL = 1.2
 MIN_X_LEAD_FACTOR = 0.5
 
 def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
@@ -66,20 +66,39 @@ def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
   elif personality==log.LongitudinalPersonality.standard:
     return 1.0
   elif personality==log.LongitudinalPersonality.aggressive:
-    return 0.5
+    return 0.8
   else:
     raise NotImplementedError("Longitudinal personality not supported")
 
 
-def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard):
+def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, v_ego=0.0):
   if personality==log.LongitudinalPersonality.relaxed:
-    return 1.75
+    return 1.55
   elif personality==log.LongitudinalPersonality.standard:
-    return 1.45
-  elif personality==log.LongitudinalPersonality.aggressive:
     return 1.25
+  elif personality==log.LongitudinalPersonality.aggressive:
+    v_kph = v_ego * 3.6
+
+    if v_kph < 40:
+      return 1.25
+    elif v_kph < 80:
+      return 0.95
+    else:
+      return 0.85
   else:
     raise NotImplementedError("Longitudinal personality not supported")
+# 0~40 km/h  : 1.25
+# 低速時保留較大車距，減少走走停停的不適感，
+# 讓市區跟車更柔順自然。
+#
+# 40~80 km/h : 0.95
+# 維持原本較積極的跟車設定，
+# 兼顧反應速度與舒適性。
+#
+# 80+ km/h   : 0.85
+# 高速時縮短跟車距離，
+# 提升超車與高速巡航時的靈敏度，
+# 降低過度保守造成的拖速感。
 
 def get_stopped_equivalence_factor(v_lead):
   return (v_lead**2) / (2 * COMFORT_BRAKE)
@@ -177,7 +196,7 @@ def gen_long_ocp():
 
   x0 = np.zeros(X_DIM)
   ocp.constraints.x0 = x0
-  ocp.parameter_values = np.array([-1.2, 1.2, 0.0, 0.0, get_T_FOLLOW(), LEAD_DANGER_FACTOR])
+  ocp.parameter_values = np.array([-1.2, 1.2, 0.0, 0.0, get_T_FOLLOW(v_ego=0.0), LEAD_DANGER_FACTOR])
 
 
   # We put all constraint cost weights to 0 and only set them at runtime
@@ -294,6 +313,7 @@ class LongitudinalMpc:
       # prior formula. On radar cars, real radar measurements anchor the trajectory.
       x_lead_traj = float(radar_lead.dRel) + (np.asarray(model_lead.x, dtype=np.float64) - model_lead.x[0])
       v_lead_traj = float(radar_lead.vLead) + (np.asarray(model_lead.v, dtype=np.float64) - model_lead.v[0])
+
     else:
       # Fake a fast lead so MPC stays in the same mode.
       x_lead_traj = 50.0 + (v_ego + 10.0) * LEAD_T_IDXS_MODEL
@@ -310,8 +330,8 @@ class LongitudinalMpc:
     return np.column_stack((x_lead_mpc, v_lead_mpc))
 
   def update(self, v_cruise, modelV2, radarstate, personality=log.LongitudinalPersonality.standard):
-    t_follow = get_T_FOLLOW(personality)
-    v_ego = self.x0[1]
+    v_ego = self.x0[1] 
+    t_follow = get_T_FOLLOW(personality, v_ego)
     model_leads = modelV2.leadsV3
     self.status = model_leads[0].prob > 0.5 or model_leads[1].prob > 0.5
 
@@ -331,13 +351,52 @@ class LongitudinalMpc:
     v_lower = v_ego + (T_IDXS * CRUISE_MIN_ACCEL * 1.05)
     # TODO does this make sense when max_a is negative?
     v_upper = v_ego + (T_IDXS * CRUISE_MAX_ACCEL * 1.05)
-    v_cruise_clipped = np.clip(v_cruise * np.ones(N+1), v_lower, v_upper)
-    cruise_obstacle = np.cumsum(T_DIFFS * v_cruise_clipped) + get_safe_obstacle_distance(v_cruise_clipped, t_follow)
+    coast_speed = v_cruise
+    speed_offset = 0.0
 
-    x_obstacles = np.column_stack([lead_0_obstacle, lead_1_obstacle, cruise_obstacle])
+    lead = radarstate.leadOne
+
+    if lead.status:
+      v_rel = v_ego - lead.vLead
+
+      if v_ego > 8.0 and v_rel > 0.0:
+        d = lead.dRel
+        # 25m內完全交給MPC
+        if d > 25.0:
+          
+          allowed_v_rel = np.interp(
+            d,
+            [30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0], #距離
+            [4.0/3.6,  8.0/3.6,  15.0/3.6,  20.0/3.6,  25.0/3.6,  30.0/3.6,  35.0/3.6] #前車的速度+數字=要求自車速度的上限
+          )
+        
+          target_speed = lead.vLead + allowed_v_rel
+
+          coast_speed = min(
+            coast_speed,
+            target_speed
+          )
+
+    v_cruise_clipped = np.clip(
+      coast_speed * np.ones(N + 1),
+      v_lower,
+      v_upper
+    )
+    cruise_obstacle = np.cumsum(T_DIFFS * v_cruise_clipped) + \
+      get_safe_obstacle_distance(v_cruise_clipped, t_follow)
+
+    x_obstacles = np.column_stack([
+      lead_0_obstacle,
+      lead_1_obstacle,
+      cruise_obstacle
+    ])
+
     self.source = MPC_SOURCES[np.argmin(x_obstacles[0])]
 
     self.yref[:,:] = 0.0
+
+    #self.yref[:, 3] = bias
+ 
     for i in range(N):
       self.solver.set(i, "yref", self.yref[i])
     self.solver.set(N, "yref", self.yref[N][:COST_E_DIM])
