@@ -184,7 +184,7 @@ class DynamicExperimentalController:
     self._expected_distance = 0.0
     self._trajectory_valid = False
     self._curve_detected = False
-    self._e2e_lead_mode = False
+    self._e2e_ttc_mode = False
 
   def _read_params(self) -> None:
     if self._frame % int(1. / DT_MDL) == 0:
@@ -231,7 +231,7 @@ class DynamicExperimentalController:
     # Slow down detection
     self._calculate_slow_down(md)
 
-    # Predictive curve detection using future path shape
+    # Predictive curve detection using future path prediction
     self._curve_detected = False
     try:
       future_points = min(20, len(md.position.y))
@@ -359,18 +359,24 @@ class DynamicExperimentalController:
       self._mode_manager.request_mode('blended', confidence=1.0)
       return
 
-    # Lead distance hysteresis
+    # TTC based far-slow-vehicle detection
     if self._has_lead_filtered and not (self._standstill_count > 3):
-      lead_dist = getattr(sm['radarState'].leadOne, 'dRel', 0.0)
+      lead = sm['radarState'].leadOne
+      lead_dist = getattr(lead, 'dRel', 0.0)
+      lead_vrel = getattr(lead, 'vRel', 0.0)
 
-      if self._e2e_lead_mode:
-        if lead_dist < 50.0:
-          self._e2e_lead_mode = False
+      ttc = 999.0
+      if lead_vrel < -0.5:
+        ttc = lead_dist / abs(lead_vrel)
+
+      if self._e2e_ttc_mode:
+        if ttc > 15.0:
+          self._e2e_ttc_mode = False
       else:
-        if lead_dist > 65.0:
-          self._e2e_lead_mode = True
+        if ttc < 12.0:
+          self._e2e_ttc_mode = True
 
-      if self._e2e_lead_mode:
+      if self._e2e_ttc_mode:
         self._mode_manager.request_mode('blended', confidence=1.0)
       else:
         self._mode_manager.request_mode('acc', confidence=1.0)
