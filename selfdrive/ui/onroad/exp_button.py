@@ -60,14 +60,12 @@ class ExpButton(Widget):
   def _show_exp_icon(self) -> bool:
     """
     Determine whether to show the experimental (E2E) icon or the wheel (ACC) icon.
-    When DEC is active, reflect the actual dynamic mode (blended=E2E, acc=wheel).
-    Otherwise fall back to the static experimentalMode flag.
+    When DEC is active, show icon based purely on DEC state (blended=E2E, acc=wheel).
+    Otherwise fall back to the static experimentalMode / held state.
     """
-    mode = self._held_or_actual_mode()
-    if mode and self._dec_active:
-      # DEC is running: show icon matching the current dynamic mode
+    if self._dec_active:
       return self._dec_is_blended
-    return mode
+    return self._held_or_actual_mode()
 
   def _render(self, rect: rl.Rectangle) -> None:
     center_x = int(self._rect.x + self._rect.width // 2)
