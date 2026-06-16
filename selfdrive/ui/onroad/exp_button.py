@@ -5,10 +5,6 @@ from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.widgets import Widget
 
-# DynamicExperimentalControlState enum values (from custom.capnp):
-# acc @0, blended @1
-_DEC_STATE_BLENDED = 1
-
 
 class ExpButton(Widget):
   def __init__(self, button_size: int, icon_size: int):
@@ -16,10 +12,6 @@ class ExpButton(Widget):
     self._params = Params()
     self._experimental_mode: bool = False
     self._engageable: bool = False
-
-    # DEC (Dynamic Experimental Control) state
-    self._dec_active: bool = False
-    self._dec_is_blended: bool = False  # True = blended (E2E), False = acc
 
     # State hold mechanism
     self._hold_duration = 2.0  # seconds
@@ -40,13 +32,6 @@ class ExpButton(Widget):
     self._experimental_mode = selfdrive_state.experimentalMode
     self._engageable = selfdrive_state.engageable or selfdrive_state.enabled
 
-    # Read DEC state from longitudinalPlanSP if available
-    if ui_state.sm.recv_frame.get("longitudinalPlanSP", 0) > 0:
-      dec = ui_state.sm["longitudinalPlanSP"].dec
-      self._dec_active = dec.active
-      # Compare as int to avoid capnp nested enum path issues
-      self._dec_is_blended = int(dec.state) == _DEC_STATE_BLENDED
-
   def _handle_mouse_release(self, _):
     super()._handle_mouse_release(_)
     if self._is_toggle_allowed():
@@ -57,23 +42,13 @@ class ExpButton(Widget):
       self._held_mode = new_mode
       self._hold_end_time = time.monotonic() + self._hold_duration
 
-  def _show_exp_icon(self) -> bool:
-    """
-    Determine whether to show the experimental (E2E) icon or the wheel (ACC) icon.
-    When DEC is active, show icon based purely on DEC state (blended=E2E, acc=wheel).
-    Otherwise fall back to the static experimentalMode / held state.
-    """
-    if self._dec_active:
-      return self._dec_is_blended
-    return self._held_or_actual_mode()
-
   def _render(self, rect: rl.Rectangle) -> None:
     center_x = int(self._rect.x + self._rect.width // 2)
     center_y = int(self._rect.y + self._rect.height // 2)
 
     self._white_color.a = 180 if self.is_pressed or not self._engageable else 255
 
-    texture = self._txt_exp if self._show_exp_icon() else self._txt_wheel
+    texture = self._txt_exp if self._held_or_actual_mode() else self._txt_wheel
     rl.draw_circle(center_x, center_y, self._rect.width / 2, self._black_bg)
     rl.draw_texture_ex(texture, rl.Vector2(center_x - texture.width / 2, center_y - texture.height / 2), 0.0, 1.0, self._white_color)
 
