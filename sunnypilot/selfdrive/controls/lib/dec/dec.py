@@ -184,6 +184,7 @@ class DynamicExperimentalController:
     self._expected_distance = 0.0
     self._trajectory_valid = False
     self._curve_detected = False
+    self._e2e_lead_mode = False
 
   def _read_params(self) -> None:
     if self._frame % int(1. / DT_MDL) == 0:
@@ -230,12 +231,13 @@ class DynamicExperimentalController:
     # Slow down detection
     self._calculate_slow_down(md)
 
-    # Curve detection
+    # Predictive curve detection using future path shape
     self._curve_detected = False
     try:
-      if len(md.orientationRate.z) > 0:
-        max_yaw = max(abs(x) for x in md.orientationRate.z)
-        self._curve_detected = max_yaw > 0.08
+      future_points = min(20, len(md.position.y))
+      if future_points > 0:
+        curve_strength = max(abs(y) for y in md.position.y[:future_points])
+        self._curve_detected = curve_strength > 1.5
     except Exception:
       pass
 
@@ -308,7 +310,7 @@ class DynamicExperimentalController:
     self._slow_down_filter.add_data(urgency)
     urgency_filtered = self._slow_down_filter.get_value() or 0.0
 
-    # User customization: disable red-light/intersection slowdown switching
+    # Custom: disable red-light / stop-line / intersection switching
     self._has_slow_down = False
     self._urgency = 0.0
 
@@ -352,16 +354,23 @@ class DynamicExperimentalController:
       self._mode_manager.request_mode('blended', confidence=1.0, emergency=True)
       return
 
-    # Curves -> blended(E2E)
+    # Predictive curve -> E2E
     if self._curve_detected:
       self._mode_manager.request_mode('blended', confidence=1.0)
       return
 
-    # Lead distance logic
+    # Lead distance hysteresis
     if self._has_lead_filtered and not (self._standstill_count > 3):
       lead_dist = getattr(sm['radarState'].leadOne, 'dRel', 0.0)
 
-      if lead_dist > 60.0:
+      if self._e2e_lead_mode:
+        if lead_dist < 50.0:
+          self._e2e_lead_mode = False
+      else:
+        if lead_dist > 65.0:
+          self._e2e_lead_mode = True
+
+      if self._e2e_lead_mode:
         self._mode_manager.request_mode('blended', confidence=1.0)
       else:
         self._mode_manager.request_mode('acc', confidence=1.0)
