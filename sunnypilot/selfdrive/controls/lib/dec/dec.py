@@ -174,6 +174,7 @@ class DynamicExperimentalController:
     self._has_slow_down = False
     self._has_slowness = False
     self._has_mpc_fcw = False
+    self._has_curve = False
     self._has_slow_lead = False
     self._v_ego_kph = 0.0
     self._v_cruise_kph = 0.0
@@ -221,14 +222,24 @@ class DynamicExperimentalController:
     self._lead_filter.add_data(float(lead_one.status))
     lead_value = self._lead_filter.get_value() or 0.0
     self._has_lead_filtered = lead_value > WMACConstants.LEAD_PROB
-    
+
+    # Curve detection from model orientation
+    try:
+      curve_values = [abs(v) for v in md.orientation.z]
+      max_curve = max(curve_values) if len(curve_values) else 0.0
+      self._has_curve = max_curve > 0.03
+    except Exception:
+      self._has_curve = False
+
     # Far slow lead detection
     if lead_one.status:
-      d_rel = lead_one.dRel
-      v_rel_kph = lead_one.vRel * 3.6
-      self._has_slow_lead = d_rel > 50.0 and v_rel_kph < -25.0
+      self._has_slow_lead = (
+        lead_one.dRel > 50.0 and
+        (lead_one.vRel * 3.6) < -25.0
+      )
     else:
       self._has_slow_lead = False
+
 
     # MPC FCW detection
     fcw_filtered_value = self._mpc_fcw_filter.get_value() or 0.0
@@ -249,12 +260,67 @@ class DynamicExperimentalController:
       self._has_slowness = slowness_value > threshold
 
   def _calculate_slow_down(self, md):
-    # Disabled red-light / intersection / stop-sign behavior
-    self._has_slow_down = False
-    self._urgency = 0.0
+    """Calculate urgency based on trajectory endpoint vs expected distance."""
+
+    # Reset to safe defaults
+    urgency = 0.0
     self._endpoint_x = float('inf')
     self._trajectory_valid = False
-    return
+
+    #Require exact trajectory size
+    position_valid = len(md.position.x) == TRAJECTORY_SIZE
+    orientation_valid = len(md.orientation.x) == TRAJECTORY_SIZE
+
+    if not (position_valid and orientation_valid):
+      # Invalid trajectory - this itself might indicate a stop scenario
+      # Apply moderate urgency for incomplete trajectories at speed
+      if self._v_ego_kph > 20.0:
+        urgency = 0.3
+
+      self._slow_down_filter.add_data(urgency)
+      urgency_filtered = self._slow_down_filter.get_value() or 0.0
+      self._has_slow_down = urgency_filtered > WMACConstants.SLOW_DOWN_PROB
+      self._urgency = urgency_filtered
+      return
+
+    # We have a valid full trajectory
+    self._trajectory_valid = True
+
+    # Use the exact endpoint (33rd point, index 32)
+    endpoint_x = md.position.x[TRAJECTORY_SIZE - 1]
+    self._endpoint_x = endpoint_x
+
+    # Get expected distance based on current speed using tuned constants
+    expected_distance = interp(self._v_ego_kph,
+                               WMACConstants.SLOW_DOWN_BP,
+                               WMACConstants.SLOW_DOWN_DIST)
+    self._expected_distance = expected_distance
+
+    # Calculate urgency based on trajectory shortage
+    if endpoint_x < expected_distance:
+      shortage = expected_distance - endpoint_x
+      shortage_ratio = shortage / expected_distance
+
+      # Base urgency on shortage ratio
+      urgency = min(1.0, shortage_ratio * 2.0)
+
+      # Increase urgency for very short trajectories (imminent stops)
+      critical_distance = expected_distance * 0.3
+      if endpoint_x < critical_distance:
+        urgency = min(1.0, urgency * 2.0)
+
+      # Speed-based urgency adjustment
+      if self._v_ego_kph > 25.0:
+        speed_factor = 1.0 + (self._v_ego_kph - 25.0) / 80.0
+        urgency = min(1.0, urgency * speed_factor)
+
+    # Apply filtering but with less smoothing for stops
+    self._slow_down_filter.add_data(urgency)
+    urgency_filtered = self._slow_down_filter.get_value() or 0.0
+
+    # Update state with lower threshold for better stop detection
+    self._has_slow_down = False
+    self._urgency = urgency_filtered
 
   def _radarless_mode(self) -> None:
     """Radarless mode decision logic with emergency handling."""
@@ -291,7 +357,12 @@ class DynamicExperimentalController:
   def _radar_mode(self) -> None:
     """Radar mode with emergency handling."""
 
-    # Far slow lead -> switch to blended(E2E) early
+    # Curve -> blended(E2E)
+    if self._has_curve:
+      self._mode_manager.request_mode('blended', confidence=0.9)
+      return
+
+    # Far slow lead -> blended(E2E)
     if self._has_slow_lead:
       self._mode_manager.request_mode('blended', confidence=1.0, emergency=True)
       return
