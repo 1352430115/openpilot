@@ -80,7 +80,7 @@ def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, v_ego=0.0):
     v_kph = v_ego * 3.6
 
     if v_kph < 40:
-      return 1.25
+      return 1.05
     elif v_kph < 80:
       return 0.95
     else:
