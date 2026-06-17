@@ -174,6 +174,7 @@ class DynamicExperimentalController:
     self._has_slow_down = False
     self._has_slowness = False
     self._has_mpc_fcw = False
+    self._has_slow_lead = False
     self._v_ego_kph = 0.0
     self._v_cruise_kph = 0.0
     self._has_standstill = False
@@ -220,6 +221,14 @@ class DynamicExperimentalController:
     self._lead_filter.add_data(float(lead_one.status))
     lead_value = self._lead_filter.get_value() or 0.0
     self._has_lead_filtered = lead_value > WMACConstants.LEAD_PROB
+    
+    # Far slow lead detection
+    if lead_one.status:
+      d_rel = lead_one.dRel
+      v_rel_kph = lead_one.vRel * 3.6
+      self._has_slow_lead = d_rel > 50.0 and v_rel_kph < -25.0
+    else:
+      self._has_slow_lead = False
 
     # MPC FCW detection
     fcw_filtered_value = self._mpc_fcw_filter.get_value() or 0.0
@@ -240,7 +249,7 @@ class DynamicExperimentalController:
       self._has_slowness = slowness_value > threshold
 
   def _calculate_slow_down(self, md):
-    """Disabled: red light / intersection / E2E stop detection."""
+    # Disabled red-light / intersection / stop-sign behavior
     self._has_slow_down = False
     self._urgency = 0.0
     self._endpoint_x = float('inf')
@@ -281,6 +290,11 @@ class DynamicExperimentalController:
 
   def _radar_mode(self) -> None:
     """Radar mode with emergency handling."""
+
+    # Far slow lead -> switch to blended(E2E) early
+    if self._has_slow_lead:
+      self._mode_manager.request_mode('blended', confidence=1.0, emergency=True)
+      return
 
     # EMERGENCY: MPC FCW - immediate blended mode
     if self._has_mpc_fcw:
