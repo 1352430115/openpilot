@@ -240,67 +240,12 @@ class DynamicExperimentalController:
       self._has_slowness = slowness_value > threshold
 
   def _calculate_slow_down(self, md):
-    """Calculate urgency based on trajectory endpoint vs expected distance."""
-
-    # Reset to safe defaults
-    urgency = 0.0
+    """Disabled: red light / intersection / E2E stop detection."""
+    self._has_slow_down = False
+    self._urgency = 0.0
     self._endpoint_x = float('inf')
     self._trajectory_valid = False
-
-    #Require exact trajectory size
-    position_valid = len(md.position.x) == TRAJECTORY_SIZE
-    orientation_valid = len(md.orientation.x) == TRAJECTORY_SIZE
-
-    if not (position_valid and orientation_valid):
-      # Invalid trajectory - this itself might indicate a stop scenario
-      # Apply moderate urgency for incomplete trajectories at speed
-      if self._v_ego_kph > 20.0:
-        urgency = 0.3
-
-      self._slow_down_filter.add_data(urgency)
-      urgency_filtered = self._slow_down_filter.get_value() or 0.0
-      self._has_slow_down = urgency_filtered > WMACConstants.SLOW_DOWN_PROB
-      self._urgency = urgency_filtered
-      return
-
-    # We have a valid full trajectory
-    self._trajectory_valid = True
-
-    # Use the exact endpoint (33rd point, index 32)
-    endpoint_x = md.position.x[TRAJECTORY_SIZE - 1]
-    self._endpoint_x = endpoint_x
-
-    # Get expected distance based on current speed using tuned constants
-    expected_distance = interp(self._v_ego_kph,
-                               WMACConstants.SLOW_DOWN_BP,
-                               WMACConstants.SLOW_DOWN_DIST)
-    self._expected_distance = expected_distance
-
-    # Calculate urgency based on trajectory shortage
-    if endpoint_x < expected_distance:
-      shortage = expected_distance - endpoint_x
-      shortage_ratio = shortage / expected_distance
-
-      # Base urgency on shortage ratio
-      urgency = min(1.0, shortage_ratio * 2.0)
-
-      # Increase urgency for very short trajectories (imminent stops)
-      critical_distance = expected_distance * 0.3
-      if endpoint_x < critical_distance:
-        urgency = min(1.0, urgency * 2.0)
-
-      # Speed-based urgency adjustment
-      if self._v_ego_kph > 25.0:
-        speed_factor = 1.0 + (self._v_ego_kph - 25.0) / 80.0
-        urgency = min(1.0, urgency * speed_factor)
-
-    # Apply filtering but with less smoothing for stops
-    self._slow_down_filter.add_data(urgency)
-    urgency_filtered = self._slow_down_filter.get_value() or 0.0
-
-    # Update state with lower threshold for better stop detection
-    self._has_slow_down = urgency_filtered > (WMACConstants.SLOW_DOWN_PROB * 0.8)
-    self._urgency = urgency_filtered
+    return
 
   def _radarless_mode(self) -> None:
     """Radarless mode decision logic with emergency handling."""
