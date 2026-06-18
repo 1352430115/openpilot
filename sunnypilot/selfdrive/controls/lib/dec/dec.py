@@ -227,7 +227,7 @@ class DynamicExperimentalController:
     try:
       curve_values = [abs(v) for v in md.orientation.z]
       max_curve = max(curve_values) if len(curve_values) else 0.0
-      self._has_curve = max_curve > 0.03
+      self._has_curve = max_curve > 0.06
     except Exception:
       self._has_curve = False
 
@@ -244,7 +244,7 @@ class DynamicExperimentalController:
     # MPC FCW detection
     fcw_filtered_value = self._mpc_fcw_filter.get_value() or 0.0
     self._mpc_fcw_filter.add_data(float(self._mpc_fcw_crash_cnt > 0))
-    self._has_mpc_fcw = fcw_filtered_value > 0.5
+    self._has_mpc_fcw = False  # Disabled
 
     # Slow down detection
     self._calculate_slow_down(md)
