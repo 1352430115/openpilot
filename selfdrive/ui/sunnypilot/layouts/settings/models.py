@@ -246,7 +246,7 @@ class ModelsLayout(Widget):
     new_step = int(round(100 / CV.MPH_TO_KPH)) if ui_state.is_metric else 100
     if self.lane_turn_value_control.action_item.value_change_step != new_step:
       self.lane_turn_value_control.action_item.value_change_step = new_step
-    self.camera_offset.set_visible(true)
+    self.camera_offset.set_visible(True)
 
     self._update_lagd_description(live_delay)
     self.model_manager = ui_state.sm["modelManagerSP"]
