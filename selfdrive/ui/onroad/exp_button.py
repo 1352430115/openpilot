@@ -32,6 +32,16 @@ class ExpButton(Widget):
     self._experimental_mode = selfdrive_state.experimentalMode
     self._engageable = selfdrive_state.engageable or selfdrive_state.enabled
 
+    # Only update DEC state when a fresh longitudinalPlanSP message has arrived.
+    # Reading a stale capnp object every frame caused flickering.
+    try:
+      if ui_state.sm.updated["longitudinalPlanSP"]:
+        dec = ui_state.sm["longitudinalPlanSP"].dec
+        self._dec_active = bool(dec.active)
+        self._dec_is_blended = str(dec.state) == "blended"
+    except Exception:
+      pass
+
   def _handle_mouse_release(self, _):
     super()._handle_mouse_release(_)
     if self._is_toggle_allowed():
