@@ -45,7 +45,7 @@ class ExpButton(Widget):
       if ui_state.sm.updated["longitudinalPlanSP"]:
         dec = ui_state.sm["longitudinalPlanSP"].dec
         self._dec_active = bool(dec.active)
-        self._dec_is_blended = int(dec.state) == _DEC_STATE_BLENDED
+        self._dec_is_blended = str(dec.state) == "blended"
     except Exception:
       pass
 
