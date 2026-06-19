@@ -223,11 +223,19 @@ class DynamicExperimentalController:
     lead_value = self._lead_filter.get_value() or 0.0
     self._has_lead_filtered = lead_value > WMACConstants.LEAD_PROB
 
-    # Curve detection from model orientation
+    # Curve detection from predicted lateral acceleration (yaw rate * speed
+    # along the trajectory), same approach SmartCruiseControlVision uses.
+    # NOTE: previously this used the cumulative `orientation.z` (heading
+    # change over the whole ~10s trajectory) which grows on almost any road
+    # over that distance, so it was nearly always above threshold and DEC
+    # got stuck requesting 'blended'. orientationRate.z is the instantaneous
+    # turn rate, so it stays near zero on straight/gently-curving roads.
     try:
-      curve_values = [abs(v) for v in md.orientation.z]
-      max_curve = max(curve_values) if len(curve_values) else 0.0
-      self._has_curve = max_curve > 0.06
+      rate_plan = [abs(v) for v in md.orientationRate.z]
+      vel_plan = md.velocity.x
+      n = min(len(rate_plan), len(vel_plan))
+      max_pred_lat_acc = max((rate_plan[i] * vel_plan[i] for i in range(n)), default=0.0)
+      self._has_curve = max_pred_lat_acc > WMACConstants.CURVE_LAT_ACC
     except Exception:
       self._has_curve = False
 
@@ -244,7 +252,7 @@ class DynamicExperimentalController:
     # MPC FCW detection
     fcw_filtered_value = self._mpc_fcw_filter.get_value() or 0.0
     self._mpc_fcw_filter.add_data(float(self._mpc_fcw_crash_cnt > 0))
-    self._has_mpc_fcw = False  # Disabled
+    self._has_mpc_fcw = fcw_filtered_value > 0.5
 
     # Slow down detection
     self._calculate_slow_down(md)
