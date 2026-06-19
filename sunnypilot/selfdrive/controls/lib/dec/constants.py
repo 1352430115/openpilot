@@ -7,7 +7,7 @@ class WMACConstants:
   # Predicted lateral acceleration (orientationRate.z * velocity.x) threshold, in m/s^2.
   # Matches SmartCruiseControlVision's _ENTERING_PRED_LAT_ACC_TH so "curve ahead"
   # means roughly the same thing across DEC and SCC-V.
-  CURVE_LAT_ACC = 1.3
+  CURVE_LAT_ACC = 1.1
 
   # Slow down detection parameters
   SLOW_DOWN_WINDOW_SIZE = 5  # Responsive but stable
