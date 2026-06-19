@@ -181,6 +181,8 @@ class DynamicExperimentalController:
     self._has_standstill = False
     self._mpc_fcw_crash_cnt = 0
     self._standstill_count = 0
+    self._post_standstill_count = 0
+    self._prev_standstill = False
     # debug
     self._endpoint_x = float('inf')
     self._expected_distance = 0.0
@@ -217,6 +219,14 @@ class DynamicExperimentalController:
       self._standstill_count = min(20, self._standstill_count + 1)
     else:
       self._standstill_count = max(0, self._standstill_count - 1)
+
+    if self._prev_standstill and not self._has_standstill:
+      self._post_standstill_count = 100
+
+    self._prev_standstill = self._has_standstill
+
+    if self._post_standstill_count > 0:
+      self._post_standstill_count -= 1
 
     # Lead detection
     self._lead_filter.add_data(float(lead_one.status))
@@ -338,6 +348,11 @@ class DynamicExperimentalController:
       self._mode_manager.request_mode('blended', confidence=1.0, emergency=True)
       return
 
+    # Hold blended for ~5 seconds after leaving standstill
+    if self._post_standstill_count > 0:
+      self._mode_manager.request_mode('blended', confidence=1.0)
+      return
+
     # Standstill: use blended
     if self._standstill_count > 3:
       self._mode_manager.request_mode('blended', confidence=0.9)
@@ -378,6 +393,11 @@ class DynamicExperimentalController:
     # EMERGENCY: MPC FCW - immediate blended mode
     if self._has_mpc_fcw:
       self._mode_manager.request_mode('blended', confidence=1.0, emergency=True)
+      return
+
+    # Hold blended for ~5 seconds after leaving standstill
+    if self._post_standstill_count > 0:
+      self._mode_manager.request_mode('blended', confidence=1.0)
       return
 
     # If lead detected and not in standstill: always use ACC
