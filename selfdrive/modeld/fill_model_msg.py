@@ -100,10 +100,21 @@ def fill_model_msg(base_msg: capnp._DynamicStructBuilder, extended_msg: capnp._D
   LINE_T_IDXS: list[float] = plan_x_idxs_helper(ModelConstants, Plan, net_output_data)
 
   # lane lines
+  LEFT_LANE_OFFSET = 0.12
+  RIGHT_LANE_OFFSET = 0.12
+
   modelV2.init('laneLines', 4)
   for i in range(4):
     lane_line = modelV2.laneLines[i]
-    fill_xyzt(lane_line, LINE_T_IDXS, np.array(ModelConstants.X_IDXS), net_output_data['lane_lines'][0,i,:,0], net_output_data['lane_lines'][0,i,:,1])
+
+    y_data = net_output_data['lane_lines'][0,i,:,0].copy()
+
+    if i == 1:
+      y_data = y_data + LEFT_LANE_OFFSET
+    elif i == 2:
+      y_data = y_data - RIGHT_LANE_OFFSET
+
+    fill_xyzt(lane_line, LINE_T_IDXS, np.array(ModelConstants.X_IDXS), y_data, net_output_data['lane_lines'][0,i,:,1])
   modelV2.laneLineStds = net_output_data['lane_lines_stds'][0,:,0,0].tolist()
   modelV2.laneLineProbs = net_output_data['lane_lines_prob'][0,1::2].tolist()
 
