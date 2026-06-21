@@ -73,6 +73,9 @@ class SmartCruiseControlVision:
     self.log_dir = "/data/media/0/realdata/turn_debug"
     os.makedirs(self.log_dir, exist_ok=True)
 
+    self.last_state = None
+    self.state_start_time = datetime.now()
+
   def get_a_target_from_control(self) -> float:
     return self.a_target
 
@@ -195,6 +198,9 @@ class SmartCruiseControlVision:
   def _log_turn_data(self) -> None:
     speed_kph = self.v_ego * 3.6
 
+    if self.frame % 20 != 0:
+      return
+
     if not self.long_enabled:
       return
     if self.state not in ACTIVE_STATES:
@@ -216,12 +222,24 @@ class SmartCruiseControlVision:
 
     if not os.path.exists(log_file):
       with open(log_file, "w") as f:
-        f.write("time,state,speed_kph,cruise_kph,target_kph,a_target,a_ego,lat_g,pred_lat_g,curvature,lat_acc,pred_lat_acc\n")
+        f.write("time,event,state,state_duration_s,speed_kph,cruise_kph,target_kph,a_target,a_ego,lat_g,pred_lat_g,curvature,lat_acc,pred_lat_acc\n")
+
+    event = ""
+    now = datetime.now()
+
+    if self.last_state != self.state:
+      event = f"{state_map.get(self.state, 'unknown').upper()}_START"
+      self.last_state = self.state
+      self.state_start_time = now
+
+    state_duration = (now - self.state_start_time).total_seconds()
 
     with open(log_file, "a") as f:
       f.write(
         f"{datetime.now().strftime('%H:%M:%S.%f')[:-3]},"
+        f"{event},"
         f"{state_map.get(self.state, 'unknown')},"
+        f"{state_duration:.1f},"
         f"{speed_kph:.2f},"
         f"{self.v_cruise_setpoint * 3.6:.2f},"
         f"{self.v_target * 3.6:.2f},"
