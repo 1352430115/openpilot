@@ -251,9 +251,16 @@ class DynamicExperimentalController:
 
     # Far slow lead detection
     if lead_one.status:
+      rel_speed = lead_one.vRel * 3.6
+
       self._has_slow_lead = (
-        lead_one.dRel > 20.0 and
-        (lead_one.vRel * 3.6) < -8.0
+        (
+          20.0 < lead_one.dRel <= 40.0 and
+          rel_speed < -4.0
+        ) or (
+          lead_one.dRel > 40.0 and
+          rel_speed < -8.0
+        )
       )
     else:
       self._has_slow_lead = False
