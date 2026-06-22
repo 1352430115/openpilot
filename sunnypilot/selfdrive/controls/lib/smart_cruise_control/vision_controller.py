@@ -198,7 +198,9 @@ class SmartCruiseControlVision:
   def _log_turn_data(self) -> None:
     speed_kph = self.v_ego * 3.6
 
-    if self.frame % 20 != 0:
+    state_changed = self.last_state != self.state
+
+    if not state_changed and self.frame % 20 != 0:
       return
 
     if not self.long_enabled:
@@ -210,6 +212,15 @@ class SmartCruiseControlVision:
 
     date_str = datetime.now().strftime("%Y%m%d")
     log_file = f"{self.log_dir}/{date_str}.csv"
+
+    # Keep only newest 5 csv files
+    try:
+      csv_files = sorted([f for f in os.listdir(self.log_dir) if f.endswith(".csv")])
+      while len(csv_files) > 5:
+        os.remove(os.path.join(self.log_dir, csv_files[0]))
+        csv_files.pop(0)
+    except Exception:
+      pass
 
     state_map = {
       VisionState.disabled: "disabled",
