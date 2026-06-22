@@ -100,7 +100,7 @@ def fill_model_msg(base_msg: capnp._DynamicStructBuilder, extended_msg: capnp._D
   LINE_T_IDXS: list[float] = plan_x_idxs_helper(ModelConstants, Plan, net_output_data)
 
   # lane lines
-  LEFT_LANE_OFFSET = 0.12
+  LEFT_LANE_OFFSET = 0.32
   RIGHT_LANE_OFFSET = 0.12
 
   modelV2.init('laneLines', 4)
