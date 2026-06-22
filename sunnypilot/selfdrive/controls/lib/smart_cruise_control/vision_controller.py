@@ -30,7 +30,7 @@ _TURNING_LAT_ACC_TH = 1.6  # Lat Acc threshold to trigger turning state.
 _LEAVING_LAT_ACC_TH = 1.5  # Lat Acc threshold to trigger leaving turn state.
 _FINISH_LAT_ACC_TH = 1.3  # Lat Acc threshold to trigger the end of the turn cycle.
 
-_A_LAT_REG_MAX = 2.2  # Maximum lateral acceleration
+_A_LAT_REG_MAX = 2.2   # Maximum lateral acceleration
 
 _NO_OVERSHOOT_TIME_HORIZON = 4.  # s. Time to use for velocity desired based on a_target when not overshooting.
 
@@ -42,7 +42,7 @@ _ENTERING_SMOOTH_DECEL_BP = [1.1, 3.]  # absolute value of lat acc ahead
 # Lookup table for the acceleration for the TURNING state
 # depending on the current lateral acceleration of the vehicle.
 #_TURNING_ACC_V = [0.25, 0.05,/0.08, -0.1/-0.08]  # acc value 持續大彎中加速度不夠,特大彎減速過多
-_TURNING_ACC_V = [0.25, 0.05, -0.2]  # acc value
+_TURNING_ACC_V = [0.25, 0.10, -0.05]  # acc value
 _TURNING_ACC_BP = [1.5, 2.3, 3.]  # absolute value of current lat acc
 
 _LEAVING_ACC = 0.7  # Conformable acceleration to regain speed while leaving a turn.
