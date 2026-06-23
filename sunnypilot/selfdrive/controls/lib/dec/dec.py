@@ -251,20 +251,18 @@ class DynamicExperimentalController:
 
     # Far slow lead detection
     if lead_one.status:
-      rel_speed = lead_one.vRel * 3.6
+      trigger_speed = interp(
+        lead_one.dRel,
+        [15.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0],
+        [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 7.0]
+      )
 
       self._has_slow_lead = (
-        (
-          20.0 < lead_one.dRel <= 40.0 and
-          rel_speed < -4.0
-        ) or (
-          lead_one.dRel > 40.0 and
-          rel_speed < -8.0
-        )
+        lead_one.dRel > 15.0 and
+        (lead_one.vRel * 3.6) < -trigger_speed
       )
     else:
       self._has_slow_lead = False
-
 
     # MPC FCW detection
     fcw_filtered_value = self._mpc_fcw_filter.get_value() or 0.0
