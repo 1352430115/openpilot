@@ -152,7 +152,7 @@ class Controls(ControlsExt):
         curvature_delta = new_desired_curvature - self.desired_curvature
 
         if abs(curvature_delta) > 0.00025:
-          new_desired_curvature = self.desired_curvature + (curvature_delta * 0.3)
+          new_desired_curvature = self.desired_curvature + (curvature_delta * 0.1)
     except Exception:
       pass
 
