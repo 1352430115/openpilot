@@ -251,16 +251,20 @@ class DynamicExperimentalController:
 
     # Far slow lead detection
     if lead_one.status:
-      trigger_speed = interp(
-        lead_one.dRel,
-        [15.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0],
-        [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 7.0]
-      )
 
-      self._has_slow_lead = (
-        lead_one.dRel > 30.0 and
-        (lead_one.vRel * 3.6) < -trigger_speed
-      )
+      if lead_one.dRel <= 25.0:
+        self._has_slow_lead = False
+
+      else:
+        trigger_speed = interp(
+          lead_one.dRel,
+          [15.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0],
+          [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 7.0]
+        )
+
+        self._has_slow_lead = (
+          (lead_one.vRel * 3.6) < -trigger_speed
+        )
     else:
       self._has_slow_lead = False
 
