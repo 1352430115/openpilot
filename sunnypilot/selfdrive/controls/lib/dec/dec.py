@@ -258,7 +258,7 @@ class DynamicExperimentalController:
       )
 
       self._has_slow_lead = (
-        lead_one.dRel > 20.0 and
+        lead_one.dRel > 30.0 and
         (lead_one.vRel * 3.6) < -trigger_speed
       )
     else:
