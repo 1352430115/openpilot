@@ -139,6 +139,23 @@ class Controls(ControlsExt):
       new_desired_curvature = self.sm['lateralManeuverPlan'].desiredCurvature if CC.latActive else self.curvature
     else:
       new_desired_curvature = model_v2.action.desiredCurvature if CC.latActive else self.curvature
+
+    # Roadside parked-car suppression
+    try:
+      right_prob = float(model_v2.laneLineProbs[2]) if len(model_v2.laneLineProbs) > 2 else 0.0
+      right_y = float(model_v2.laneLines[2].y[0]) if len(model_v2.laneLines) > 2 and len(model_v2.laneLines[2].y) > 0 else 0.0
+
+      if (CS.vEgo < 70 * CV.KPH_TO_MS and
+          right_prob > 0.8 and
+          right_y > 1.6):
+
+        curvature_delta = new_desired_curvature - self.desired_curvature
+
+        if abs(curvature_delta) > 0.00025:
+          new_desired_curvature = self.desired_curvature + (curvature_delta * 0.3)
+    except Exception:
+      pass
+
     self.desired_curvature, curvature_limited = clip_curvature(CS.vEgo, self.desired_curvature, new_desired_curvature, lp.roll)
     lat_delay = self.sm["liveDelay"].lateralDelay + LAT_SMOOTH_SECONDS
 
