@@ -146,7 +146,7 @@ class Controls(ControlsExt):
       right_y = float(model_v2.laneLines[2].y[0]) if len(model_v2.laneLines) > 2 and len(model_v2.laneLines[2].y) > 0 else 0.0
 
       if (CS.vEgo < 70 * CV.KPH_TO_MS and
-          right_prob > 0.8 and
+          right_prob > 0.6 and
           right_y > 1.6):
 
         curvature_delta = new_desired_curvature - self.desired_curvature
