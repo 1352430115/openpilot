@@ -349,13 +349,13 @@ class LongitudinalMpc:
     lead_0_obstacle = (
       lead_xv_0[:,0]
       + get_stopped_equivalence_factor(lead_xv_0[:,1])
-      + lead_stop_offset_0
+      - lead_stop_offset_0
     )
 
     lead_1_obstacle = (
       lead_xv_1[:,0]
       + get_stopped_equivalence_factor(lead_xv_1[:,1])
-      + lead_stop_offset_1
+      - lead_stop_offset_1
     )
 
     # Fake an obstacle for cruise, this ensures smooth acceleration to set speed
