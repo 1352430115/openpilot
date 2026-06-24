@@ -364,7 +364,6 @@ class LongitudinalMpc:
     # TODO does this make sense when max_a is negative?
     v_upper = v_ego + (T_IDXS * CRUISE_MAX_ACCEL * 1.05)
     coast_speed = v_cruise
-    speed_offset = 0.0
 
     lead = radarstate.leadOne
 
@@ -414,8 +413,6 @@ class LongitudinalMpc:
     # 速差越小 => 越接近原本MPC
     # =========================
 
-    lead = radarstate.leadOne
-
     if lead.status:
 
       d = float(lead.dRel)
@@ -446,9 +443,9 @@ class LongitudinalMpc:
         # 速差越大
         # MPC加速能力保留越少
         #
-        # 2km/h  -> 100%
-        # 5km/h  -> 80%
-        # 10km/h -> 60%
+        # 2km/h  -> 80%
+        # 5km/h  -> 60%
+        # 10km/h -> 50%
         # 20km/h -> 40%
         #
         # 想更保守:
@@ -460,7 +457,7 @@ class LongitudinalMpc:
         reduction = np.interp(
           v_rel_kph,
           [2.0, 5.0, 10.0, 20.0],
-          [1.0, 0.8, 0.6, 0.4]
+          [0.8, 0.6, 0.5, 0.4]
         )
 
         # 套用到MPC最大加速度
