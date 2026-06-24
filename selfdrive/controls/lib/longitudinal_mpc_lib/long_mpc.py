@@ -368,27 +368,6 @@ class LongitudinalMpc:
 
     lead = radarstate.leadOne
 
-    if lead.status:
-      v_rel = v_ego - lead.vLead
-
-      if v_ego > 8.0 and v_rel > 0.0:
-        d = lead.dRel
-        # 25m內完全交給MPC
-        if d > 20.0:
-          
-          allowed_v_rel = np.interp(
-            d,
-            [20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0], #距離
-            [2.0/3.6,  4.0/3.6,  8.0/3.6,  15.0/3.6,  20.0/3.6,  25.0/3.6,  30.0/3.6,  35.0/3.6] #前車的速度+數字=要求自車速度的上限
-          )
-        
-          target_speed = lead.vLead + allowed_v_rel
-
-          coast_speed = min(
-            coast_speed,
-            target_speed
-          )
-
     v_cruise_clipped = np.clip(
       coast_speed * np.ones(N + 1),
       v_lower,
@@ -416,9 +395,76 @@ class LongitudinalMpc:
     self.params[:,0] = ACCEL_MIN
     self.params[:,1] = ACCEL_MAX
     self.params[:,2] = np.min(x_obstacles, axis=1)
+
     self.params[:,3] = np.copy(self.a_prev)
     self.params[:,4] = t_follow
     self.params[:,5] = LEAD_DANGER_FACTOR
+
+    # =========================
+    # 追車加速抑制 V2
+    #
+    # 目的:
+    # 不直接限制速度
+    # 不直接限制固定加速度
+    #
+    # 而是依照「速差大小」
+    # 動態降低 MPC 最大加速度
+    #
+    # 速差越大 => 追車越保守
+    # 速差越小 => 越接近原本MPC
+    # =========================
+
+    lead = radarstate.leadOne
+
+    if lead.status:
+
+      d = float(lead.dRel)
+
+      # 自車與前車速差(km/h)
+      v_rel_kph = (v_ego - lead.vLead) * 3.6
+
+      # ---------------------------------
+      # 啟動門檻
+      #
+      # 30m -> 2 km/h
+      # 40m -> 3 km/h
+      # 60m -> 6 km/h
+      #
+      # 修改上面數字即可調整啟動時機
+      # ---------------------------------
+      trigger_v_rel = np.interp(
+        d,
+        [30.0, 40.0, 60.0],
+        [2.0, 3.0, 6.0]
+      )
+
+      if v_rel_kph > trigger_v_rel:
+
+        # ---------------------------------
+        # MPC加速保留倍率
+        #
+        # 速差越大
+        # MPC加速能力保留越少
+        #
+        # 2km/h  -> 100%
+        # 5km/h  -> 80%
+        # 10km/h -> 60%
+        # 20km/h -> 40%
+        #
+        # 想更保守:
+        # 最後的0.4改更小
+        #
+        # 想更積極:
+        # 最後的0.4改更大
+        # ---------------------------------
+        reduction = np.interp(
+          v_rel_kph,
+          [2.0, 5.0, 10.0, 20.0],
+          [1.0, 0.8, 0.6, 0.4]
+        )
+
+        # 套用到MPC最大加速度
+        self.params[:,1] *= reduction
 
     self.run()
     if (np.any(lead_xv_0[FCW_IDXS,0] - self.x_sol[FCW_IDXS,0] < CRASH_DISTANCE) and
