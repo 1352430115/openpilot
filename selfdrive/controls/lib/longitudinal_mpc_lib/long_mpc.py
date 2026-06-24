@@ -472,6 +472,21 @@ class LongitudinalMpc:
       # 套用到 MPC 最大加速度
       self.params[:,1] *= reduction
 
+      # ---------------------------------
+      # 遠距離慢車預判滑行
+      #
+      # 距離大於40m
+      # 且速差大於10km/h
+      #
+      # 幾乎禁止補油
+      # 讓車輛自然滑行接近前車
+      # ---------------------------------
+      if d > 40.0 and v_rel_kph > 10.0:
+        self.params[:,1] = np.minimum(
+          self.params[:,1],
+          0.05
+        )
+
     self.run()
     if (np.any(lead_xv_0[FCW_IDXS,0] - self.x_sol[FCW_IDXS,0] < CRASH_DISTANCE) and
             model_leads[0].prob > 0.9):
