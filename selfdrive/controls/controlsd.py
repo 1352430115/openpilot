@@ -51,6 +51,9 @@ class Controls(ControlsExt):
     self.curvature = 0.0
     self.desired_curvature = 0.0
 
+    # 抑制左偏 V2 (Roadside Left Bias Suppression)
+    self.roadside_left_bias_counter = 0
+
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
 
@@ -140,7 +143,7 @@ class Controls(ControlsExt):
     else:
       new_desired_curvature = model_v2.action.desiredCurvature if CC.latActive else self.curvature
 
-    # Roadside parked-car suppression
+    # 抑制左偏 V2 (Roadside Left Bias Suppression)
     try:
       right_prob = float(model_v2.laneLineProbs[2]) if len(model_v2.laneLineProbs) > 2 else 0.0
       right_y = float(model_v2.laneLines[2].y[0]) if len(model_v2.laneLines) > 2 and len(model_v2.laneLines[2].y) > 0 else 0.0
@@ -151,10 +154,32 @@ class Controls(ControlsExt):
 
         curvature_delta = new_desired_curvature - self.desired_curvature
 
-        if abs(curvature_delta) > 0.00025:
-          new_desired_curvature = self.desired_curvature + (curvature_delta * 0.1)
+        if curvature_delta < -0.00025:
+          self.roadside_left_bias_counter = min(self.roadside_left_bias_counter + 1, 30)
+        else:
+          self.roadside_left_bias_counter = max(self.roadside_left_bias_counter - 1, 0)
+
+        if curvature_delta < -0.00025:
+
+          if self.roadside_left_bias_counter >= 25:
+            suppress_factor = 0.10
+          elif self.roadside_left_bias_counter >= 20:
+            suppress_factor = 0.20
+          elif self.roadside_left_bias_counter >= 15:
+            suppress_factor = 0.40
+          else:
+            suppress_factor = 1.00
+
+          if suppress_factor < 1.0:
+            new_desired_curvature = (
+              self.desired_curvature +
+              curvature_delta * suppress_factor
+            )
+      else:
+        self.roadside_left_bias_counter = 0
+
     except Exception:
-      pass
+      self.roadside_left_bias_counter = 0
 
     self.desired_curvature, curvature_limited = clip_curvature(CS.vEgo, self.desired_curvature, new_desired_curvature, lp.roll)
     lat_delay = self.sm["liveDelay"].lateralDelay + LAT_SMOOTH_SECONDS
