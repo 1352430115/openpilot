@@ -397,11 +397,12 @@ class LongitudinalMpc:
 
     if lead.status and len(self.lead_v_history) == 5:
 
-      # 最近5幀是否持續下降
-      decel_detected = all(
+      # 最近5幀中4幀下降即觸發（容許1幀Radar抖動）
+      decel_count = sum(
         self.lead_v_history[i] > self.lead_v_history[i+1]
         for i in range(4)
       )
+      decel_detected = decel_count >= 3
 
       if decel_detected and lead.dRel < 25.0 and lead.vLead < v_ego:
 
@@ -414,8 +415,8 @@ class LongitudinalMpc:
           [1.0,2.0,3.0]
         )
 
-        # 提前增加安全距離
-        lead_0_obstacle += offset
+        # 把障礙物拉近，MPC提早減速
+        lead_0_obstacle -= offset
 
 
     v_cruise_clipped = np.clip(
