@@ -352,6 +352,59 @@ class LongitudinalMpc:
       - lead_stop_offset_0
     )
 
+    # ============================================================
+    # Lead Decel Predictor (測試版 V1)
+    #
+    # 目的：
+    # 前車開始放油或輕踩煞車時，
+    # 讓 MPC 提前預期前車還會繼續減速，
+    # 避免一直維持車速，直到距離很近才重煞。
+    #
+    # 觸發條件：
+    # 1. 前車存在
+    # 2. 前車距離 < 30m
+    # 3. 自車比前車快 > 2m/s (約7.2km/h)
+    #
+    # 可調整參數：
+    # 距離 : [10,20,30]
+    # 減速 : [2.0,1.5,1.0] (m/s)
+    #
+    # 數值越大：
+    #   越早收油、越早煞車、越保守
+    #
+    # 數值越小：
+    #   越接近原本 MPC
+    # ============================================================
+
+    if radarstate.leadOne.status:
+
+      d = float(radarstate.leadOne.dRel)
+
+      # 自車與前車速差 (m/s)
+      v_rel = max(v_ego - radarstate.leadOne.vLead, 0.0)
+
+      if d < 30.0 and v_rel > 2.0:
+
+        # 模擬前車持續減速
+        decel = np.interp(
+          d,
+          [10.0, 20.0, 30.0],
+          [2.0, 1.5, 1.0]
+        )
+
+        # 降低預測中的前車速度
+        lead_xv_0[:,1] = np.maximum(
+          lead_xv_0[:,1] - decel,
+          0.0
+        )
+
+        # 重新計算前車障礙物位置
+        lead_0_obstacle = (
+          lead_xv_0[:,0]
+          + get_stopped_equivalence_factor(lead_xv_0[:,1])
+          - lead_stop_offset_0
+        )
+
     lead_1_obstacle = (
       lead_xv_1[:,0]
       + get_stopped_equivalence_factor(lead_xv_1[:,1])
