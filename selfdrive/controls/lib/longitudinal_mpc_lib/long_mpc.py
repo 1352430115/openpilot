@@ -272,6 +272,7 @@ class LongitudinalMpc:
     self.lead_xv_0 = np.zeros((N+1, 2))
     self.lead_xv_1 = np.zeros((N+1, 2))
     self.set_weights()
+    self.last_vLead = None  # 紀錄上一幀前車速度，供減速偵測使用
 
   def set_cost_weights(self, cost_weights, constraint_cost_weights):
     W = np.asfortranarray(np.diag(cost_weights))
@@ -352,60 +353,8 @@ class LongitudinalMpc:
       - lead_stop_offset_0
     )
 
-    # ============================================================
-    # Lead Decel Predictor (測試版 V1)
-    #
-    # 目的：
-    # 前車開始放油或輕踩煞車時，
-    # 讓 MPC 提前預期前車還會繼續減速，
-    # 避免一直維持車速，直到距離很近才重煞。
-    #
-    # 觸發條件：
-    # 1. 前車存在
-    # 2. 前車距離 < 30m
-    # 3. 自車比前車快 > 2m/s (約7.2km/h)
-    #
-    # 可調整參數：
-    # 距離 : [10,20,30]
-    # 減速 : [2.0,1.5,1.0] (m/s)
-    #
-    # 數值越大：
-    #   越早收油、越早煞車、越保守
-    #
-    # 數值越小：
-    #   越接近原本 MPC
-    # ============================================================
-
-    if radarstate.leadOne.status:
-
-      d = float(radarstate.leadOne.dRel)
-
-      # 自車與前車速差 (m/s)
-      v_rel = max(v_ego - radarstate.leadOne.vLead, 0.0)
-
-      if d < 30.0 and v_rel > 2.0:
-
-        # 模擬前車持續減速
-        decel = np.interp(
-          d,
-          [10.0, 20.0, 30.0],
-          [2.0, 1.5, 1.0]
-        )
-
-        # 降低預測中的前車速度
-        lead_xv_0[:,1] = np.maximum(
-          lead_xv_0[:,1] - decel,
-          0.0
-        )
-
-        # 重新計算前車障礙物位置
-        lead_0_obstacle = (
-          lead_xv_0[:,0]
-          + get_stopped_equivalence_factor(lead_xv_0[:,1])
-          - lead_stop_offset_0
-        )
-
     lead_1_obstacle = (
+
       lead_xv_1[:,0]
       + get_stopped_equivalence_factor(lead_xv_1[:,1])
       - lead_stop_offset_1
@@ -419,6 +368,40 @@ class LongitudinalMpc:
     coast_speed = v_cruise
 
     lead = radarstate.leadOne
+
+    # ============================================================
+    # 前車減速偵測 V2
+    #
+    # 利用 Radar 前車速度與上一幀比較，
+    # 若前車開始持續減速，則提前增加安全距離，
+    # 讓 MPC 更早收油、微煞。
+    # ============================================================
+    lead_decel = 0.0
+
+    if lead.status:
+      if self.last_vLead is not None:
+        lead_decel = max(self.last_vLead - lead.vLead, 0.0)
+      self.last_vLead = lead.vLead
+    else:
+      self.last_vLead = None
+
+    # ============================================================
+    # 前車減速預判
+    #
+    # 可調整參數：
+    # 距離：25m
+    # 最小減速：0.3 m/s
+    # Offset：[1,2,3] m
+    # ============================================================
+    if lead.status and lead.dRel < 25.0 and lead.vLead < v_ego:
+      if lead_decel > 0.3:
+        offset = np.interp(
+          lead_decel,
+          [0.3, 0.6, 1.0],
+          [1.0, 2.0, 3.0]
+        )
+        lead_0_obstacle += offset
+
 
     v_cruise_clipped = np.clip(
       coast_speed * np.ones(N + 1),
