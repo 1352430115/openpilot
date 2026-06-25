@@ -272,7 +272,8 @@ class LongitudinalMpc:
     self.lead_xv_0 = np.zeros((N+1, 2))
     self.lead_xv_1 = np.zeros((N+1, 2))
     self.set_weights()
-    self.last_vLead = None  # 紀錄上一幀前車速度，供減速偵測使用
+    # 前車速度歷史(最近5幀)，用來判斷是否持續減速
+    self.lead_v_history = []
 
   def set_cost_weights(self, cost_weights, constraint_cost_weights):
     W = np.asfortranarray(np.diag(cost_weights))
@@ -354,7 +355,6 @@ class LongitudinalMpc:
     )
 
     lead_1_obstacle = (
-
       lead_xv_1[:,0]
       + get_stopped_equivalence_factor(lead_xv_1[:,1])
       - lead_stop_offset_1
@@ -370,36 +370,51 @@ class LongitudinalMpc:
     lead = radarstate.leadOne
 
     # ============================================================
-    # 前車減速偵測 V2
+    # Lead Decel Predictor V3
     #
-    # 利用 Radar 前車速度與上一幀比較，
-    # 若前車開始持續減速，則提前增加安全距離，
-    # 讓 MPC 更早收油、微煞。
+    # 設計理念：
+    # 不看單一幀，避免 Radar 抖動誤判。
+    # 改為觀察最近 5 幀(約0.25秒)前車速度。
+    #
+    # 條件：
+    # 1. 前車存在
+    # 2. 距離 < 25m
+    # 3. 前車速度連續下降
+    # 4. 前車速度低於自車
+    #
+    # 可調參數：
+    # 25.0  -> 作用距離
+    # 5     -> 歷史幀數
+    # [1,2,3] -> 額外安全距離(m)
     # ============================================================
-    lead_decel = 0.0
 
     if lead.status:
-      if self.last_vLead is not None:
-        lead_decel = max(self.last_vLead - lead.vLead, 0.0)
-      self.last_vLead = lead.vLead
+      self.lead_v_history.append(float(lead.vLead))
+      if len(self.lead_v_history) > 5:
+        self.lead_v_history.pop(0)
     else:
-      self.last_vLead = None
+      self.lead_v_history.clear()
 
-    # ============================================================
-    # 前車減速預判
-    #
-    # 可調整參數：
-    # 距離：25m
-    # 最小減速：0.3 m/s
-    # Offset：[1,2,3] m
-    # ============================================================
-    if lead.status and lead.dRel < 25.0 and lead.vLead < v_ego:
-      if lead_decel > 0.3:
+    if lead.status and len(self.lead_v_history) == 5:
+
+      # 最近5幀是否持續下降
+      decel_detected = all(
+        self.lead_v_history[i] > self.lead_v_history[i+1]
+        for i in range(4)
+      )
+
+      if decel_detected and lead.dRel < 25.0 and lead.vLead < v_ego:
+
+        # 最近5幀總減速量
+        total_decel = self.lead_v_history[0] - self.lead_v_history[-1]
+
         offset = np.interp(
-          lead_decel,
-          [0.3, 0.6, 1.0],
-          [1.0, 2.0, 3.0]
+          total_decel,
+          [0.3,0.8,1.5],
+          [1.0,2.0,3.0]
         )
+
+        # 提前增加安全距離
         lead_0_obstacle += offset
 
 
