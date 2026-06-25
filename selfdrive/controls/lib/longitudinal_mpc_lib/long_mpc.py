@@ -451,20 +451,6 @@ class LongitudinalMpc:
     self.params[:,4] = t_follow
     self.params[:,5] = LEAD_DANGER_FACTOR
 
-    # =========================
-    # 追車加速抑制 V2
-    #
-    # 目的:
-    # 不直接限制速度
-    # 不直接限制固定加速度
-    #
-    # 而是依照「速差大小」
-    # 動態降低 MPC 最大加速度
-    #
-    # 速差越大 => 追車越保守
-    # 速差越小 => 越接近原本MPC
-    # =========================
-
         # =========================
     # 追車加速抑制 V4
     #
@@ -525,19 +511,37 @@ class LongitudinalMpc:
       self.params[:,1] *= reduction
 
       # ---------------------------------
-      # 遠距離慢車預判滑行
+      # V5 遠距離慢車預判滑行
       #
-      # 距離大於40m
-      # 且速差大於10km/h
+      # 功能：
+      # 遠距離看到慢車時，提前降低補油，
+      # 讓車輛自然滑行接近前車。
       #
-      # 幾乎禁止補油
-      # 讓車輛自然滑行接近前車
+      # 40m內仍由 V4 跟車邏輯接管。
       # ---------------------------------
-      if d > 40.0 and v_rel_kph > 10.0:
-        self.params[:,1] = np.minimum(
-          self.params[:,1],
-          0.05
+      if d > 40.0:
+
+        # 距離越遠，需要越大的速差才開始介入
+        trigger_speed = np.interp(
+          d,
+          [40.0, 60.0, 80.0, 100.0, 140.0],
+          [3.0, 5.0, 7.0, 9.0, 12.0]
         )
+
+        if v_rel_kph > trigger_speed:
+
+          # 距離越近，允許的最大加速度越小
+          approach_limit = np.interp(
+            d,
+            [40.0, 60.0, 80.0, 100.0, 140.0],
+            [0.15, 0.30, 0.50, 0.75, ACCEL_MAX]
+          )
+
+          # 僅能比 V4 更保守，不會放寬 V4 的限制
+          self.params[:,1] = np.minimum(
+            self.params[:,1],
+            approach_limit
+          )
 
     self.run()
     if (np.any(lead_xv_0[FCW_IDXS,0] - self.x_sol[FCW_IDXS,0] < CRASH_DISTANCE) and
