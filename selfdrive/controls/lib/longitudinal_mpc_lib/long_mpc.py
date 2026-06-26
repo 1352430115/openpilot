@@ -328,17 +328,19 @@ class LongitudinalMpc:
     v_lead_traj = np.clip(v_lead_traj, 0.0, 1e8)
 
     # ============================================================
-    # Lead Lock Test V1
+    # 前車鎖定測試 V1
     #
-    # Prevent false lead-resume prediction after hard braking.
-    # Only active when:
-    #   - Radar lead exists
-    #   - Lead is within 12 m
-    #   - Ego speed < 2.0 m/s (~7 km/h)
-    #   - Radar lead speed < 0.5 m/s (~1.8 km/h)
+    # 功能：
+    # 停車或低速跟車時，避免前車急煞後因模型預測而誤判前車開始起步。
     #
-    # This only limits the predicted lead speed. It does not modify
-    # V3/V4/V5 logic, obstacle generation or acceleration limits.
+    # 啟動條件：
+    #   - Radar 偵測到前車
+    #   - 前車距離小於 12 m
+    #   - 自車速度小於 2.0 m/s（約 7 km/h）
+    #   - 前車速度小於 0.5 m/s（約 1.8 km/h）
+    #
+    # 僅限制前車預測速度，不影響 V3/V4 邏輯、
+    # 障礙物生成或加速度限制。
     # ============================================================
     if (
       radar_lead.status and
@@ -400,12 +402,12 @@ class LongitudinalMpc:
     #
     # 條件：
     # 1. 前車存在
-    # 2. 距離 < 25m
+    # 2. 距離 < 40m
     # 3. 前車速度連續下降
     # 4. 前車速度低於自車
     #
     # 可調參數：
-    # 25.0  -> 作用距離
+    # 40.0  -> 作用距離
     # 4     -> 歷史幀數
     # [1,2,3] -> 額外安全距離(m)
     # ============================================================
@@ -426,7 +428,7 @@ class LongitudinalMpc:
       )
       decel_detected = decel_count >= 2
 
-      if decel_detected and lead.dRel < 25.0 and lead.vLead < v_ego:
+      if decel_detected and lead.dRel < 40.0 and lead.vLead < v_ego:
 
         # 最近5幀總減速量
         total_decel = self.lead_v_history[0] - self.lead_v_history[-1]
@@ -531,39 +533,6 @@ class LongitudinalMpc:
 
       # 套用到 MPC 最大加速度
       self.params[:,1] *= reduction
-
-      # ---------------------------------
-      # V5 遠距離慢車預判滑行
-      #
-      # 功能：
-      # 遠距離看到慢車時，提前降低補油，
-      # 讓車輛自然滑行接近前車。
-      #
-      # 40m內仍由 V4 跟車邏輯接管。
-      # ---------------------------------
-      if d > 40.0:
-
-        # 距離越遠，需要越大的速差才開始介入
-        trigger_speed = np.interp(
-          d,
-          [40.0, 60.0, 80.0, 100.0, 140.0],
-          [3.0, 5.0, 7.0, 9.0, 12.0]
-        )
-
-        if v_rel_kph > trigger_speed:
-
-          # 距離越近，允許的最大加速度越小
-          approach_limit = np.interp(
-            d,
-            [40.0, 60.0, 80.0, 100.0, 140.0],
-            [0.15, 0.30, 0.50, 0.75, ACCEL_MAX]
-          )
-
-          # 僅能比 V4 更保守，不會放寬 V4 的限制
-          self.params[:,1] = np.minimum(
-            self.params[:,1],
-            approach_limit
-          )
 
     self.run()
     if (np.any(lead_xv_0[FCW_IDXS,0] - self.x_sol[FCW_IDXS,0] < CRASH_DISTANCE) and
