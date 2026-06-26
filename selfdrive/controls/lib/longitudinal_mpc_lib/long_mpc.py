@@ -327,6 +327,28 @@ class LongitudinalMpc:
     x_lead_traj[0] = max(x_lead_traj[0], min_x_lead)
     v_lead_traj = np.clip(v_lead_traj, 0.0, 1e8)
 
+    # ============================================================
+    # Lead Lock Test V1
+    #
+    # Prevent false lead-resume prediction after hard braking.
+    # Only active when:
+    #   - Radar lead exists
+    #   - Lead is within 12 m
+    #   - Ego speed < 2.0 m/s (~7 km/h)
+    #   - Radar lead speed < 0.5 m/s (~1.8 km/h)
+    #
+    # This only limits the predicted lead speed. It does not modify
+    # V3/V4/V5 logic, obstacle generation or acceleration limits.
+    # ============================================================
+    if (
+      radar_lead.status and
+      radar_lead.dRel < 12.0 and
+      v_ego < 2.0 and
+      radar_lead.vLead < 0.5
+    ):
+      v_lead_cap = max(radar_lead.vLead, 0.0)
+      v_lead_traj = np.minimum(v_lead_traj, v_lead_cap + 0.3)
+
     x_lead_mpc = np.maximum.accumulate(np.interp(T_IDXS, LEAD_T_IDXS_MODEL, x_lead_traj))
     v_lead_mpc = np.interp(T_IDXS, LEAD_T_IDXS_MODEL, v_lead_traj)
     return np.column_stack((x_lead_mpc, v_lead_mpc))
