@@ -396,7 +396,7 @@ class LongitudinalMpc:
     #
     # 設計理念：
     # 不看單一幀，避免 Radar 抖動誤判。
-    # 改為觀察最近 5 幀(約0.25秒)前車速度。
+    # 改為觀察最近 4 幀(約0.20秒)前車速度。
     #
     # 條件：
     # 1. 前車存在
@@ -406,25 +406,25 @@ class LongitudinalMpc:
     #
     # 可調參數：
     # 25.0  -> 作用距離
-    # 5     -> 歷史幀數
+    # 4     -> 歷史幀數
     # [1,2,3] -> 額外安全距離(m)
     # ============================================================
 
     if lead.status:
       self.lead_v_history.append(float(lead.vLead))
-      if len(self.lead_v_history) > 5:
+      if len(self.lead_v_history) > 4:
         self.lead_v_history.pop(0)
     else:
       self.lead_v_history.clear()
 
-    if lead.status and len(self.lead_v_history) == 5:
+    if lead.status and len(self.lead_v_history) == 4:
 
-      # 最近5幀中4幀下降即觸發（容許1幀Radar抖動）
+      # 最近4幀中2幀下降即觸發（容許1幀Radar抖動）
       decel_count = sum(
         self.lead_v_history[i] > self.lead_v_history[i+1]
-        for i in range(4)
+        for i in range(3)
       )
-      decel_detected = decel_count >= 3
+      decel_detected = decel_count >= 2
 
       if decel_detected and lead.dRel < 25.0 and lead.vLead < v_ego:
 
