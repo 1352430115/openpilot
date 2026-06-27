@@ -394,52 +394,61 @@ class LongitudinalMpc:
     lead = radarstate.leadOne
 
     # ============================================================
-    # Lead Decel Predictor V3
-    #
-    # 設計理念：
-    # 不看單一幀，避免 Radar 抖動誤判。
-    # 改為觀察最近 4 幀(約0.20秒)前車速度。
-    #
-    # 條件：
-    # 1. 前車存在
-    # 2. 距離 < 40m
-    # 3. 前車速度連續下降
-    # 4. 前車速度低於自車
-    #
-    # 可調參數：
-    # 40.0  -> 作用距離
-    # 4     -> 歷史幀數
-    # [1,2,3] -> 額外安全距離(m)
+    # Lead Decel Predictor V4.1 (Adaptive Offset)
     # ============================================================
+
+    LEAD_HISTORY_SIZE = 4
+    LEAD_DECEL_COUNT = 2
+
+    LEAD_DECEL_BP = [0.3, 0.8, 1.5]
+    LEAD_OFFSET_BP = [1.0, 2.0, 3.0]
+
+    LEAD_DISTANCE_BP = [10.0, 15.0, 20.0, 30.0, 40.0, 55.0, 70.0, 90.0, 120.0]
+    LEAD_DISTANCE_SCALE = [0.2, 0.5, 0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0]
+
+    LEAD_MIN_DECEL_BP = [40.0, 60.0, 90.0, 120.0]
+    LEAD_MIN_DECEL = [0.00, 0.05, 0.12, 0.20]
 
     if lead.status:
       self.lead_v_history.append(float(lead.vLead))
-      if len(self.lead_v_history) > 4:
+      if len(self.lead_v_history) > LEAD_HISTORY_SIZE:
         self.lead_v_history.pop(0)
     else:
       self.lead_v_history.clear()
 
-    if lead.status and len(self.lead_v_history) == 4:
+    if lead.status and len(self.lead_v_history) == LEAD_HISTORY_SIZE:
 
-      # 最近4幀中2幀下降即觸發（容許1幀Radar抖動）
-      decel_count = sum(
-        self.lead_v_history[i] > self.lead_v_history[i+1]
-        for i in range(3)
+      near_lead = lead.dRel <= 40.0
+
+      min_decel = 0.0 if near_lead else np.interp(
+        lead.dRel,
+        LEAD_MIN_DECEL_BP,
+        LEAD_MIN_DECEL
       )
-      decel_detected = decel_count >= 2
 
-      if decel_detected and lead.dRel < 40.0 and lead.vLead < v_ego:
+      decel_count = sum(
+        (self.lead_v_history[i] - self.lead_v_history[i + 1]) > min_decel
+        for i in range(LEAD_HISTORY_SIZE - 1)
+      )
 
-        # 最近5幀總減速量
+      if decel_count >= LEAD_DECEL_COUNT and lead.vLead < v_ego:
+
         total_decel = self.lead_v_history[0] - self.lead_v_history[-1]
 
-        offset = np.interp(
+        base_offset = np.interp(
           total_decel,
-          [0.3,0.8,1.5],
-          [1.0,2.0,3.0]
+          LEAD_DECEL_BP,
+          LEAD_OFFSET_BP
         )
 
-        # 把障礙物拉近，MPC提早減速
+        distance_scale = np.interp(
+          lead.dRel,
+          LEAD_DISTANCE_BP,
+          LEAD_DISTANCE_SCALE
+        )
+
+        offset = base_offset * distance_scale
+
         lead_0_obstacle -= offset
 
 
