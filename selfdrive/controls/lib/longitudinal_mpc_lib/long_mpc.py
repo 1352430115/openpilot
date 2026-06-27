@@ -394,18 +394,32 @@ class LongitudinalMpc:
     lead = radarstate.leadOne
 
     # ============================================================
-    # Lead Decel Predictor V4.1 (Adaptive Offset)
+    # Lead Decel Predictor Adaptive V1
+    #
+    # 功能：
+    # 1. 最近4幀偵測前車是否持續減速
+    # 2. 近距離降低介入，避免停紅燈重煞
+    # 3. 中距離維持 V3 效果
+    # 4. 遠距離逐步放大 Offset，提早建立減速度
+    #
+    # 建議調整順序：
+    # 1. LEAD_DISTANCE_SCALE
+    # 2. LEAD_OFFSET_BP
+    # 3. LEAD_MIN_DECEL
     # ============================================================
 
-    LEAD_HISTORY_SIZE = 4
-    LEAD_DECEL_COUNT = 2
+    LEAD_HISTORY_SIZE = 4          # 歷史速度幀數
+    LEAD_DECEL_COUNT = 2           # 至少下降幾次才觸發
 
+    # 前車減速量 -> 基礎 Offset(m)
     LEAD_DECEL_BP = [0.3, 0.8, 1.5]
     LEAD_OFFSET_BP = [1.0, 2.0, 3.0]
 
+    # Adaptive Offset 距離倍率
     LEAD_DISTANCE_BP = [10.0, 15.0, 20.0, 30.0, 40.0, 55.0, 70.0, 90.0, 120.0]
     LEAD_DISTANCE_SCALE = [0.2, 0.5, 0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0]
 
+    # 40m 外 Radar 誤差補償
     LEAD_MIN_DECEL_BP = [40.0, 60.0, 90.0, 120.0]
     LEAD_MIN_DECEL = [0.00, 0.05, 0.12, 0.20]
 
@@ -449,6 +463,7 @@ class LongitudinalMpc:
 
         offset = base_offset * distance_scale
 
+        # 將障礙物往前拉近，讓 MPC 提早建立減速度
         lead_0_obstacle -= offset
 
 
