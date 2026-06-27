@@ -81,7 +81,9 @@ def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, v_ego=0.0):
 
     if v_kph < 45:
       return 1.25
-    elif v_kph < 80:
+    elif v_kph < 70:
+      return 1.15
+    elif v_kph < 95:
       return 1.05
     else:
       return 0.85
@@ -91,11 +93,12 @@ def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, v_ego=0.0):
 # 低速時保留較大車距，減少走走停停的不適感，
 # 讓市區跟車更柔順自然。
 #
-# 45~80 km/h : 1.05
+# 45~70 km/h : 1.15
 # 維持原本較積極的跟車設定，
 # 兼顧反應速度與舒適性。
 #
-# 80+ km/h   : 0.85
+# 70~95 km/h   : 1.05
+# 95+ km/h   : 0.85
 # 高速時縮短跟車距離，
 # 提升超車與高速巡航時的靈敏度，
 # 降低過度保守造成的拖速感。
