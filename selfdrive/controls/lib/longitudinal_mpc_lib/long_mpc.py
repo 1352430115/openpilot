@@ -79,19 +79,19 @@ def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, v_ego=0.0):
   elif personality==log.LongitudinalPersonality.aggressive:
     v_kph = v_ego * 3.6
 
-    if v_kph < 40:
-      return 1.05
+    if v_kph < 45:
+      return 1.25
     elif v_kph < 80:
-      return 0.95
+      return 1.05
     else:
       return 0.85
   else:
     raise NotImplementedError("Longitudinal personality not supported")
-# 0~40 km/h  : 1.25
+# 0~45 km/h  : 1.25
 # 低速時保留較大車距，減少走走停停的不適感，
 # 讓市區跟車更柔順自然。
 #
-# 40~80 km/h : 0.95
+# 45~80 km/h : 1.05
 # 維持原本較積極的跟車設定，
 # 兼顧反應速度與舒適性。
 #
