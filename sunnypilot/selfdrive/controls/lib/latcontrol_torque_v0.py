@@ -1,5 +1,6 @@
 import math
 import os
+from pathlib import Path
 import numpy as np
 from collections import deque
 from datetime import datetime, timedelta, timezone
@@ -63,7 +64,9 @@ class LatControlTorque(LatControl):
 
   def _lateral_debug_log(self, CS, params, desired_curvature, measured_curvature,
                          setpoint, measurement, ff, freeze_integrator,
-                         output_torque, roll_compensation):
+                         output_torque, roll_compensation,
+                         saturated, steer_limited_by_safety,
+                         curvature_limited, measurement_rate):
     try:
       now = datetime.now(TW_TZ)
       fn = os.path.join(LATERAL_LOG_DIR, now.strftime("%Y-%m-%d_lateral.log"))
@@ -85,7 +88,11 @@ class LatControlTorque(LatControl):
           f"ff={ff:.4f},"
           f"P={self.pid.p:.4f},I={self.pid.i:.4f},F={self.pid.f:.4f},"
           f"torque={output_torque:.4f},"
-          f"freezeI={freeze_integrator}\n"
+          f"measRate={measurement_rate:.4f},"
+          f"freezeI={freeze_integrator},"
+          f"saturated={saturated},"
+          f"steerLimited={steer_limited_by_safety},"
+          f"curvatureLimited={curvature_limited}\n"
         )
       cutoff = now - timedelta(days=3)
       for p in Path(LATERAL_LOG_DIR).glob("*_lateral.log"):
@@ -175,7 +182,9 @@ class LatControlTorque(LatControl):
       if active and CS.vEgo > 10.0 and abs(desired_curvature) > 0.0015:
         self._lateral_debug_log(CS, params, desired_curvature, measured_curvature,
                                 setpoint, measurement, ff, freeze_integrator,
-                                output_torque, roll_compensation)
+                                output_torque, roll_compensation,
+                                pid_log.saturated, steer_limited_by_safety,
+                                curvature_limited, measurement_rate)
 
     # TODO left is positive in this convention
     return -output_torque, 0.0, pid_log
