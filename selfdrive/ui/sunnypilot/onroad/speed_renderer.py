@@ -31,13 +31,50 @@ class SpeedRenderer:
     speed_conversion = CV.MS_TO_KPH if ui_state.is_metric else CV.MS_TO_MPH
     self.speed = max(0.0, v_ego * speed_conversion)
 
-    # SCI V1
-    if getattr(car_state, "brakeLights", False):
-      self.speed_color = COLORS.RED
-    elif getattr(car_state, "gasPressed", False):
+    # ==========================================================
+    # SCI V1（時速顏色指示器）
+    # Version : 1.0
+    # Date    : 2026-06-28
+    #
+    # 功能：
+    # 依照 openpilot 最終輸出的縱向控制命令(actuators.accel)
+    # 即時改變目前時速顏色。
+    #
+    # 綠色：OP 正在加速
+    # 白色：滑行／維持速度
+    # 紅色：OP 正在減速／煞車
+    #
+    # ※ 本功能僅影響 UI，不影響任何控制邏輯。
+    # ==========================================================
+
+    controls_state = ui_state.sm['controlsState']
+
+    # ===== SCI V1 可調整參數 =====
+    # 綠色門檻（m/s²）
+    # 越小：越容易變綠
+    # 越大：需要更大的加速才會變綠
+    # 建議範圍：0.03 ~ 0.10
+    SCI_ACCEL_GREEN = 0.05
+
+    # 紅色門檻（m/s²）
+    # 越接近 0（例如 -0.20）：越容易變紅
+    # 越負（例如 -0.50）：需要更大的減速度才會變紅
+    # 建議範圍：-0.20 ~ -0.50
+    SCI_BRAKE_RED = -0.30
+
+    # 讀取 Toyota CarController 最終輸出的縱向控制命令
+    accel = controls_state.actuators.accel
+
+    # OP 正在加速
+    if accel > SCI_ACCEL_GREEN:
       self.speed_color = COLORS.GREEN
+    # OP 正在減速／煞車
+    elif accel < SCI_BRAKE_RED:
+      self.speed_color = COLORS.RED
+    # OP 滑行／維持速度
     else:
       self.speed_color = COLORS.WHITE
+
 
   def render(self, rect: rl.Rectangle) -> None:
     if ui_state.hide_v_ego_ui:
