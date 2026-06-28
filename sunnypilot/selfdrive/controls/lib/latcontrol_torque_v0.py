@@ -1,6 +1,8 @@
 import math
+import os
 import numpy as np
 from collections import deque
+from datetime import datetime, timedelta, timezone
 
 from cereal import log
 from opendbc.car.lateral import get_friction
@@ -31,7 +33,13 @@ KP_INTERP = [250, 120, 65, 30, 11.5, 5.5, 3.5, 2.0, KP]
 LP_FILTER_CUTOFF_HZ = 1.2
 LAT_ACCEL_REQUEST_BUFFER_SECONDS = 1.0
 FRICTION_THRESHOLD = 0.3
+
 VERSION = 0
+
+# ===== Lateral Debug Logger V1 =====
+TW_TZ = timezone(timedelta(hours=8))
+LATERAL_LOG_DIR = "/data/media/0/realdata/lateral_logs"
+LOG_INTERVAL = 0.1
 
 
 class LatControlTorque(LatControl):
@@ -49,6 +57,46 @@ class LatControlTorque(LatControl):
     self.measurement_rate_filter = FirstOrderFilter(0.0, 1 / (2 * np.pi * LP_FILTER_CUTOFF_HZ), self.dt)
 
     self.extension = LatControlTorqueExt(self, CP, CP_SP, CI)
+
+    self._last_log_time = 0.0
+    os.makedirs(LATERAL_LOG_DIR, exist_ok=True)
+
+  def _lateral_debug_log(self, CS, params, desired_curvature, measured_curvature,
+                         setpoint, measurement, ff, freeze_integrator,
+                         output_torque, roll_compensation):
+    try:
+      now = datetime.now(TW_TZ)
+      fn = os.path.join(LATERAL_LOG_DIR, now.strftime("%Y-%m-%d_lateral.log"))
+      direction = "RIGHT" if desired_curvature < 0 else "LEFT"
+      with open(fn, "a") as f:
+        f.write(
+          f"{now.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]},"
+          f"{direction},"
+          f"speed={CS.vEgo*3.6:.1f},"
+          f"steer={CS.steeringAngleDeg:.2f},"
+          f"roll={params.roll:.5f},"
+          f"rollComp={roll_compensation:.4f},"
+          f"desiredCurv={desired_curvature:.6f},"
+          f"measuredCurv={measured_curvature:.6f},"
+          f"curvErr={desired_curvature-measured_curvature:.6f},"
+          f"desiredLat={setpoint:.4f},"
+          f"actualLat={measurement:.4f},"
+          f"latErr={setpoint-measurement:.4f},"
+          f"ff={ff:.4f},"
+          f"P={self.pid.p:.4f},I={self.pid.i:.4f},F={self.pid.f:.4f},"
+          f"torque={output_torque:.4f},"
+          f"freezeI={freeze_integrator}\n"
+        )
+      cutoff = now - timedelta(days=3)
+      for p in Path(LATERAL_LOG_DIR).glob("*_lateral.log"):
+        try:
+          d = datetime.strptime(p.stem.replace("_lateral",""), "%Y-%m-%d").replace(tzinfo=TW_TZ)
+          if d < cutoff:
+            p.unlink()
+        except Exception:
+          pass
+    except Exception:
+      pass
 
   def update_live_torque_params(self, latAccelFactor, latAccelOffset, friction):
     self.torque_params.latAccelFactor = latAccelFactor
@@ -123,6 +171,11 @@ class LatControlTorque(LatControl):
       pid_log.desiredLateralAccel = float(setpoint)
       pid_log.desiredLateralJerk = float(desired_lateral_jerk)
       pid_log.saturated = bool(self._check_saturation(self.steer_max - abs(output_torque) < 1e-3, CS, steer_limited_by_safety, curvature_limited))
+
+      if active and CS.vEgo > 10.0 and abs(desired_curvature) > 0.0015:
+        self._lateral_debug_log(CS, params, desired_curvature, measured_curvature,
+                                setpoint, measurement, ff, freeze_integrator,
+                                output_torque, roll_compensation)
 
     # TODO left is positive in this convention
     return -output_torque, 0.0, pid_log
