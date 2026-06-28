@@ -1,4 +1,3 @@
-# V5_SUMMARY_SUPPORT
 """
 Copyright (c) 2021-, Haibin Wen, sunnypilot, and a number of other contributors.
 
@@ -67,7 +66,6 @@ class SmartCruiseControlVision:
     self.state = VisionState.disabled
     self.current_lat_acc = 0.
     self.max_pred_lat_acc = 0.
-    self.current_curvature = 0.
 
   def get_a_target_from_control(self) -> float:
     return self.a_target
@@ -89,7 +87,6 @@ class SmartCruiseControlVision:
       rate_plan = np.array(np.abs(sm['modelV2'].orientationRate.z))
       vel_plan = np.array(sm['modelV2'].velocity.x)
 
-      self.current_curvature = sm['controlsState'].curvature
       self.current_lat_acc = self.v_ego ** 2 * abs(self.current_curvature)
 
       # get the maximum lat accel from the model
@@ -203,6 +200,5 @@ class SmartCruiseControlVision:
 
     self.output_v_target = self.get_v_target_from_control()
     self.output_a_target = self.get_a_target_from_control()
-
 
     self.frame += 1
