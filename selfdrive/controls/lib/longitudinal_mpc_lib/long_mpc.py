@@ -79,23 +79,26 @@ def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, v_ego=0.0):
   elif personality==log.LongitudinalPersonality.aggressive:
     v_kph = v_ego * 3.6
 
-    if v_kph < 40:
+    if v_kph < 45:
+      return 1.25
+    elif v_kph < 70:
+      return 1.15
+    elif v_kph < 95:
       return 1.05
-    elif v_kph < 80:
-      return 0.95
     else:
       return 0.85
   else:
     raise NotImplementedError("Longitudinal personality not supported")
-# 0~40 km/h  : 1.25
+# 0~45 km/h  : 1.25
 # 低速時保留較大車距，減少走走停停的不適感，
 # 讓市區跟車更柔順自然。
 #
-# 40~80 km/h : 0.95
+# 45~70 km/h : 1.15
 # 維持原本較積極的跟車設定，
 # 兼顧反應速度與舒適性。
 #
-# 80+ km/h   : 0.85
+# 70~95 km/h   : 1.05
+# 95+ km/h   : 0.85
 # 高速時縮短跟車距離，
 # 提升超車與高速巡航時的靈敏度，
 # 降低過度保守造成的拖速感。
@@ -394,52 +397,76 @@ class LongitudinalMpc:
     lead = radarstate.leadOne
 
     # ============================================================
-    # Lead Decel Predictor V3
+    # Lead Decel Predictor Adaptive V1
     #
-    # 設計理念：
-    # 不看單一幀，避免 Radar 抖動誤判。
-    # 改為觀察最近 4 幀(約0.20秒)前車速度。
+    # 功能：
+    # 1. 最近4幀偵測前車是否持續減速
+    # 2. 近距離降低介入，避免停紅燈重煞
+    # 3. 中距離維持 V3 效果
+    # 4. 遠距離逐步放大 Offset，提早建立減速度
     #
-    # 條件：
-    # 1. 前車存在
-    # 2. 距離 < 40m
-    # 3. 前車速度連續下降
-    # 4. 前車速度低於自車
-    #
-    # 可調參數：
-    # 40.0  -> 作用距離
-    # 4     -> 歷史幀數
-    # [1,2,3] -> 額外安全距離(m)
+    # 建議調整順序：
+    # 1. LEAD_DISTANCE_SCALE
+    # 2. LEAD_OFFSET_BP
+    # 3. LEAD_MIN_DECEL
     # ============================================================
+
+    LEAD_HISTORY_SIZE = 4          # 歷史速度幀數
+    LEAD_DECEL_COUNT = 2           # 至少下降幾次才觸發
+
+    # 前車減速量 -> 基礎 Offset(m)
+    LEAD_DECEL_BP = [0.3, 0.8, 1.5]
+    LEAD_OFFSET_BP = [1.0, 2.0, 3.0]
+
+    # Adaptive Offset 距離倍率
+    LEAD_DISTANCE_BP = [10.0, 15.0, 20.0, 30.0, 40.0, 55.0, 70.0, 90.0, 120.0]
+    LEAD_DISTANCE_SCALE = [0.2, 0.5, 0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0]
+
+    # 40m 外 Radar 誤差補償
+    LEAD_MIN_DECEL_BP = [40.0, 60.0, 90.0, 120.0]
+    LEAD_MIN_DECEL = [0.00, 0.05, 0.12, 0.20]
 
     if lead.status:
       self.lead_v_history.append(float(lead.vLead))
-      if len(self.lead_v_history) > 4:
+      if len(self.lead_v_history) > LEAD_HISTORY_SIZE:
         self.lead_v_history.pop(0)
     else:
       self.lead_v_history.clear()
 
-    if lead.status and len(self.lead_v_history) == 4:
+    if lead.status and len(self.lead_v_history) == LEAD_HISTORY_SIZE:
 
-      # 最近4幀中2幀下降即觸發（容許1幀Radar抖動）
-      decel_count = sum(
-        self.lead_v_history[i] > self.lead_v_history[i+1]
-        for i in range(3)
+      near_lead = lead.dRel <= 40.0
+
+      min_decel = 0.0 if near_lead else np.interp(
+        lead.dRel,
+        LEAD_MIN_DECEL_BP,
+        LEAD_MIN_DECEL
       )
-      decel_detected = decel_count >= 2
 
-      if decel_detected and lead.dRel < 40.0 and lead.vLead < v_ego:
+      decel_count = sum(
+        (self.lead_v_history[i] - self.lead_v_history[i + 1]) > min_decel
+        for i in range(LEAD_HISTORY_SIZE - 1)
+      )
 
-        # 最近5幀總減速量
+      if decel_count >= LEAD_DECEL_COUNT and lead.vLead < v_ego:
+
         total_decel = self.lead_v_history[0] - self.lead_v_history[-1]
 
-        offset = np.interp(
+        base_offset = np.interp(
           total_decel,
-          [0.3,0.8,1.5],
-          [1.0,2.0,3.0]
+          LEAD_DECEL_BP,
+          LEAD_OFFSET_BP
         )
 
-        # 把障礙物拉近，MPC提早減速
+        distance_scale = np.interp(
+          lead.dRel,
+          LEAD_DISTANCE_BP,
+          LEAD_DISTANCE_SCALE
+        )
+
+        offset = base_offset * distance_scale
+
+        # 將障礙物往前拉近，讓 MPC 提早建立減速度
         lead_0_obstacle -= offset
 
 
