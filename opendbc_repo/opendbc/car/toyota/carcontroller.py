@@ -326,6 +326,10 @@ class CarController(CarControllerBase, GasInterceptorCarController):
     new_actuators.steeringAngleDeg = self.last_angle
     new_actuators.accel = self.accel
     new_actuators.gas = self.gas
+    # SCI: 將實際煞車狀態寫入 brake 欄位供 UI 讀取。
+    # permit_braking=True 且 accel<0 才代表真正送出煞車命令（煞車燈亮）。
+    # 注意：此值僅供 UI 顯示使用，不影響任何 CAN 控制命令。
+    new_actuators.brake = 1.0 if (self.permit_braking and self.accel < 0.0) else 0.0
 
     self.frame += 1
     return new_actuators, can_sends
