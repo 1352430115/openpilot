@@ -88,6 +88,13 @@ class CarController(CarControllerBase, GasInterceptorCarController):
     hud_control = CC.hudControl
     pcm_cancel_cmd = CC.cruiseControl.cancel
     lat_active = CC.latActive and abs(CS.out.steeringTorque) < MAX_USER_TORQUE
+    # 動態調整 STEER_DELTA_DOWN
+    # 45 km/h 以下：25（維持大角度回正能力）
+    # 45 km/h 以上：20（提升高速回正線性感）
+    if CS.out.vEgo > (45 / 3.6):
+      self.params.STEER_DELTA_DOWN = 20
+    else:
+      self.params.STEER_DELTA_DOWN = 25
 
     if len(CC.orientationNED) == 3:
       self.pitch.update(CC.orientationNED[1])
