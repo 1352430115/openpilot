@@ -346,3 +346,33 @@ class AltitudeElement(GpsInfoElement):
 
     value = f"{altitude:.1f}" if gps_accuracy != 0.0 else "-"
     return UiElement(value, "ALT.", self.unit, rl.WHITE)
+
+
+class CpuUsageElement:
+  def __init__(self):
+    self.unit = "%"
+
+  def update(self, sm, is_metric: bool) -> UiElement:
+    usage = max(sm['deviceState'].cpuUsagePercent) if len(sm['deviceState'].cpuUsagePercent) else 0
+    if usage > 80:
+      color = rl.RED
+    elif usage >= 50:
+      color = rl.Color(255, 188, 0, 255)
+    else:
+      color = rl.Color(0, 255, 0, 255)
+    return UiElement(f"{int(usage)}", "CPU", self.unit, color)
+
+
+class CpuTempElement:
+  def __init__(self):
+    self.unit = "°C"
+
+  def update(self, sm, is_metric: bool) -> UiElement:
+    temp = max(sm['deviceState'].cpuTempC) if len(sm['deviceState'].cpuTempC) else 0.0
+    if temp > 80:
+      color = rl.RED
+    elif temp >= 65:
+      color = rl.Color(255, 188, 0, 255)
+    else:
+      color = rl.Color(0, 255, 0, 255)
+    return UiElement(f"{int(round(temp))}", "CPU TEMP", self.unit, color)

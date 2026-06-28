@@ -12,7 +12,8 @@ from openpilot.selfdrive.ui.sunnypilot.onroad.developer_ui.elements import (
   UiElement, RelDistElement, RelSpeedElement, SteeringAngleElement,
   DesiredLateralAccelElement, ActualLateralAccelElement, DesiredSteeringAngleElement,
   AEgoElement, LeadSpeedElement, FrictionCoefficientElement, LatAccelFactorElement,
-  SteeringTorqueEpsElement, BearingDegElement, AltitudeElement, DesiredSteeringPIDElement
+  SteeringTorqueEpsElement, BearingDegElement, AltitudeElement, DesiredSteeringPIDElement,
+  CpuUsageElement, CpuTempElement
 )
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.text_measure import measure_text_cached
@@ -42,6 +43,8 @@ class DeveloperUiRenderer(Widget):
     self.rel_dist_elem = RelDistElement()
     self.rel_speed_elem = RelSpeedElement()
     self.steering_angle_elem = SteeringAngleElement()
+    self.cpu_usage_elem = CpuUsageElement()
+    self.cpu_temp_elem = CpuTempElement()
     self.desired_lat_accel_elem = DesiredLateralAccelElement()
     self.actual_lat_accel_elem = ActualLateralAccelElement()
     self.desired_steer_elem = DesiredSteeringAngleElement()
@@ -85,10 +88,10 @@ class DeveloperUiRenderer(Widget):
     elements = [
       self.rel_dist_elem.update(sm, ui_state.is_metric),
       self.rel_speed_elem.update(sm, ui_state.is_metric),
-      self.steering_angle_elem.update(sm, ui_state.is_metric),
+      self.cpu_usage_elem.update(sm, ui_state.is_metric),
     ]
     if controls_state.lateralControlState.which() == 'torqueState':
-      elements.append(self.desired_lat_accel_elem.update(sm, ui_state.is_metric))
+      elements.append(self.cpu_temp_elem.update(sm, ui_state.is_metric))
     elif controls_state.lateralControlState.which() == 'angleState':
       elements.append(self.desired_steer_elem.update(sm, ui_state.is_metric))
     elif controls_state.lateralControlState.which() == 'pidState':
