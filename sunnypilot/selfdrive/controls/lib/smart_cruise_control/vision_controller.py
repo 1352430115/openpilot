@@ -1,4 +1,3 @@
-# V5_SUMMARY_SUPPORT
 """
 Copyright (c) 2021-, Haibin Wen, sunnypilot, and a number of other contributors.
 
@@ -6,8 +5,6 @@ This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
 import numpy as np
-import os
-from datetime import datetime
 
 import cereal.messaging as messaging
 from cereal import custom
@@ -69,13 +66,6 @@ class SmartCruiseControlVision:
     self.state = VisionState.disabled
     self.current_lat_acc = 0.
     self.max_pred_lat_acc = 0.
-    self.current_curvature = 0.
-
-    self.log_dir = "/data/media/0/realdata/turn_debug"
-    os.makedirs(self.log_dir, exist_ok=True)
-
-    self.last_state = None
-    self.state_start_time = datetime.now()
 
   def get_a_target_from_control(self) -> float:
     return self.a_target
@@ -97,7 +87,6 @@ class SmartCruiseControlVision:
       rate_plan = np.array(np.abs(sm['modelV2'].orientationRate.z))
       vel_plan = np.array(sm['modelV2'].velocity.x)
 
-      self.current_curvature = sm['controlsState'].curvature
       self.current_lat_acc = self.v_ego ** 2 * abs(self.current_curvature)
 
       # get the maximum lat accel from the model
@@ -195,76 +184,6 @@ class SmartCruiseControlVision:
 
     return a_target
 
-
-  def _log_turn_data(self) -> None:
-    speed_kph = self.v_ego * 3.6
-
-    state_changed = self.last_state != self.state
-
-    if not state_changed and self.frame % 20 != 0:
-      return
-
-    if not self.long_enabled:
-      return
-    if self.state not in ACTIVE_STATES:
-      return
-    if speed_kph < 35 or speed_kph > 100:
-      return
-
-    date_str = datetime.now().strftime("%Y%m%d")
-    log_file = f"{self.log_dir}/{date_str}.csv"
-
-    # Keep only newest 5 csv files
-    try:
-      csv_files = sorted([f for f in os.listdir(self.log_dir) if f.endswith(".csv")])
-      while len(csv_files) > 5:
-        os.remove(os.path.join(self.log_dir, csv_files[0]))
-        csv_files.pop(0)
-    except Exception:
-      pass
-
-    state_map = {
-      VisionState.disabled: "disabled",
-      VisionState.enabled: "enabled",
-      VisionState.entering: "entering",
-      VisionState.turning: "turning",
-      VisionState.leaving: "leaving",
-      VisionState.overriding: "overriding",
-    }
-
-    if not os.path.exists(log_file):
-      with open(log_file, "w") as f:
-        f.write("time,event,state,state_duration_s,speed_kph,cruise_kph,target_kph,a_target,a_ego,lat_g,pred_lat_g,curvature,lat_acc,pred_lat_acc\n")
-
-    event = ""
-    now = datetime.now()
-
-    if self.last_state != self.state:
-      event = f"{state_map.get(self.state, 'unknown').upper()}_START"
-      self.last_state = self.state
-      self.state_start_time = now
-
-    state_duration = (now - self.state_start_time).total_seconds()
-
-    with open(log_file, "a") as f:
-      f.write(
-        f"{datetime.now().strftime('%H:%M:%S.%f')[:-3]},"
-        f"{event},"
-        f"{state_map.get(self.state, 'unknown')},"
-        f"{state_duration:.1f},"
-        f"{speed_kph:.2f},"
-        f"{self.v_cruise_setpoint * 3.6:.2f},"
-        f"{self.v_target * 3.6:.2f},"
-        f"{self.a_target:.3f},"
-        f"{self.a_ego:.3f},"
-        f"{self.current_lat_acc / 9.81:.3f},"
-        f"{self.max_pred_lat_acc / 9.81:.3f},"
-        f"{self.current_curvature:.6f},"
-        f"{self.current_lat_acc:.3f},"
-        f"{self.max_pred_lat_acc:.3f}\n"
-      )
-
-
   def update(self, sm: messaging.SubMaster, long_enabled: bool, long_override: bool, v_ego: float, a_ego: float,
              v_cruise_setpoint: float) -> None:
     self.long_enabled = long_enabled
@@ -281,7 +200,5 @@ class SmartCruiseControlVision:
 
     self.output_v_target = self.get_v_target_from_control()
     self.output_a_target = self.get_a_target_from_control()
-
-    self._log_turn_data()
 
     self.frame += 1
