@@ -75,6 +75,9 @@ class CarState(CarStateBase, CarStateExt):
     ret.brakePressed = cp.vl["BRAKE_MODULE"]["BRAKE_PRESSED"] != 0
     ret.brakeHoldActive = cp.vl["ESP_CONTROL"]["BRAKE_HOLD_ACTIVE"] == 1
 
+    # SCI V1 Debug：列印 ESP_CONTROL 所有 Signal（測試完成後請刪除）
+    print(cp.vl["ESP_CONTROL"])
+
     if self.CP.flags & ToyotaFlags.SECOC.value:
       self.secoc_synchronization = copy.copy(cp.vl["SECOC_SYNCHRONIZATION"])
       ret.gasPressed = cp.vl["GAS_PEDAL"]["GAS_PEDAL_USER"] > 0
