@@ -1,4 +1,8 @@
 import copy
+import os
+import csv
+import time
+from datetime import datetime, timedelta, timezone
 
 from opendbc.can import CANDefine, CANParser
 from opendbc.car import Bus, DT_CTRL, create_button_events, structs
@@ -56,6 +60,10 @@ class CarState(CarStateBase, CarStateExt):
     self.gvc = 0.0
     self.secoc_synchronization = None
 
+    # SCI Brake CAN Logger
+    self._brake_log_last = 0.0
+    self._brake_log_dir = "/data/media/0/realdata/brake_can"
+
   def update(self, can_parsers) -> tuple[structs.CarState, structs.CarStateSP]:
     cp = can_parsers[Bus.pt]
     cp_cam = can_parsers[Bus.cam]
@@ -77,6 +85,30 @@ class CarState(CarStateBase, CarStateExt):
     # SCI: ACC 主動煞車燈信號（引擎煞車不會觸發）
     # SCI：若 DBC 沒有 BRAKE_LIGHTS_ACC，不讓 carstate 因 KeyError 崩潰
     ret.brakeLightsDEPRECATED = (cp.vl["ESP_CONTROL"].get("BRAKE_LIGHTS_ACC", 0) == 1)
+    # SCI Brake CAN Logger (10Hz)
+    try:
+      now=time.monotonic()
+      if now-self._brake_log_last>=0.1:
+        self._brake_log_last=now
+        tz=timezone(timedelta(hours=8))
+        dt=datetime.now(tz)
+        os.makedirs(self._brake_log_dir,exist_ok=True)
+        for fn in os.listdir(self._brake_log_dir):
+          if fn.endswith(".csv"):
+            try:
+              d=datetime.strptime(fn[:-4],"%Y-%m-%d").date()
+              if d < (dt.date()-timedelta(days=2)):
+                os.remove(os.path.join(self._brake_log_dir,fn))
+            except: pass
+        p=os.path.join(self._brake_log_dir,dt.strftime("%Y-%m-%d.csv"))
+        nf=not os.path.exists(p)
+        with open(p,"a",newline="") as f:
+          w=csv.writer(f)
+          if nf:
+            w.writerow(["time","vEgo","brakePressed","brakeHold","brakeLightsACC","cruiseActive"])
+          w.writerow([dt.strftime("%H:%M:%S.%f")[:-3],round(ret.vEgo,3),int(ret.brakePressed),int(ret.brakeHoldActive),int(ret.brakeLightsDEPRECATED),int(cp.vl["PCM_CRUISE"]["CRUISE_ACTIVE"])])
+    except Exception:
+      pass
 
     if self.CP.flags & ToyotaFlags.SECOC.value:
       self.secoc_synchronization = copy.copy(cp.vl["SECOC_SYNCHRONIZATION"])
