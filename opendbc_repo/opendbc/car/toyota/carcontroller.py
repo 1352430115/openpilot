@@ -88,13 +88,6 @@ class CarController(CarControllerBase, GasInterceptorCarController):
     hud_control = CC.hudControl
     pcm_cancel_cmd = CC.cruiseControl.cancel
     lat_active = CC.latActive and abs(CS.out.steeringTorque) < MAX_USER_TORQUE
-    # 動態調整 STEER_DELTA_DOWN
-    # 45 km/h 以下：25（維持大角度回正能力）
-    # 45 km/h 以上：20（提升高速回正線性感）
-    if CS.out.vEgo > (45 / 3.6):
-      self.params.STEER_DELTA_DOWN = 20
-    else:
-      self.params.STEER_DELTA_DOWN = 25
 
     if len(CC.orientationNED) == 3:
       self.pitch.update(CC.orientationNED[1])
@@ -333,10 +326,6 @@ class CarController(CarControllerBase, GasInterceptorCarController):
     new_actuators.steeringAngleDeg = self.last_angle
     new_actuators.accel = self.accel
     new_actuators.gas = self.gas
-    # SCI: 將實際煞車狀態寫入 brake 欄位供 UI 讀取。
-    # permit_braking=True 且 accel<0 才代表真正送出煞車命令（煞車燈亮）。
-    # 注意：此值僅供 UI 顯示使用，不影響任何 CAN 控制命令。
-    new_actuators.brake = 1.0 if (self.permit_braking and self.accel < -0.2) else 0.0
 
     self.frame += 1
     return new_actuators, can_sends
