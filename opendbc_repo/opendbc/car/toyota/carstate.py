@@ -74,9 +74,9 @@ class CarState(CarStateBase, CarStateExt):
 
     ret.brakePressed = cp.vl["BRAKE_MODULE"]["BRAKE_PRESSED"] != 0
     ret.brakeHoldActive = cp.vl["ESP_CONTROL"]["BRAKE_HOLD_ACTIVE"] == 1
-
-    # SCI V1 Debug：列印 ESP_CONTROL 所有 Signal（測試完成後請刪除）
-    print(cp.vl["ESP_CONTROL"])
+    # SCI: ACC 主動煞車燈信號（引擎煞車不會觸發）
+    # SCI：若 DBC 沒有 BRAKE_LIGHTS_ACC，不讓 carstate 因 KeyError 崩潰
+    ret.brakeLightsDEPRECATED = (cp.vl["ESP_CONTROL"].get("BRAKE_LIGHTS_ACC", 0) == 1)
 
     if self.CP.flags & ToyotaFlags.SECOC.value:
       self.secoc_synchronization = copy.copy(cp.vl["SECOC_SYNCHRONIZATION"])
