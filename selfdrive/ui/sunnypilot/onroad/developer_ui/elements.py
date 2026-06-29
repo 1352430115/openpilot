@@ -353,7 +353,10 @@ class CpuUsageElement:
     self.unit = "%"
 
   def update(self, sm, is_metric: bool) -> UiElement:
-    usage = max(sm['deviceState'].cpuUsagePercent) if len(sm['deviceState'].cpuUsagePercent) else 0
+    # ===== CPU 使用率 =====
+    # 使用所有 CPU Core 的平均值，而不是最高值
+    cpu_usage = sm['deviceState'].cpuUsagePercent
+    usage = (sum(cpu_usage) / len(cpu_usage)) if len(cpu_usage) else 0
     if usage > 80:
       color = rl.RED
     elif usage >= 50:
