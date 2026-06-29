@@ -14,23 +14,19 @@ from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.selfdrive.ui.onroad.hud_renderer import FONT_SIZES, COLORS
 
 # ==========================================================
-# SCI V2.0（時速顏色指示器）
-# Date : 2026-06-28
+# SCI V3.0（時速顏色指示器）
+# Date : 2026-06-29
 #
 # 綠色：OP 正在加速（或人踩油門）
-# 白色：滑行／維持速度
-# 紅色：OP 正在煞車（或人踩煞車）
+# 白色：滑行／維持速度（含引擎煞車）
+# 紅色：ACC 主動液壓煞車（後車看到煞車燈亮）
 #
-# 煞車判斷來源：carOutput.actuatorsOutput.brake
-#   由 carcontroller.py 寫入，條件為：
-#   permit_braking=True AND accel<0
-#   這才是真正送出煞車 CAN 命令（煞車燈亮）的條件。
+# 煞車判斷來源：carState.brakeLightsDEPRECATED
+#   由 carstate.py 解析 CAN 信號 BRAKE_LIGHTS_ACC（ESP_CONTROL frame）
+#   此信號為 Toyota 車輛實際亮起煞車燈的硬體信號。
+#   引擎煞車、放油門減速不會觸發此信號。
 #
-# 加速判斷來源：carOutput.actuatorsOutput.accel > 0
-#   同樣來自 carcontroller.py 的最終輸出值。
-#
-# 兩者皆加入人為踏板 fallback（gasPressed / brakePressed），
-# 確保手動駕駛時也能正確顯示。
+# 加速判斷來源：carState.gasPressed 或 carOutput.actuatorsOutput.accel > 0
 #
 # ※ 本功能僅影響 UI，不影響任何控制邏輯。
 # ==========================================================
@@ -61,11 +57,12 @@ class SpeedRenderer:
     speed_conversion = CV.MS_TO_KPH if ui_state.is_metric else CV.MS_TO_MPH
     self.speed = max(0.0, v_ego * speed_conversion)
 
-    # 讀取 carOutput.actuatorsOutput（carcontroller.py 最終輸出，已含所有補償）
-    # brake 欄位由修改後的 carcontroller.py 寫入：permit_braking AND accel<0
-    actuators_out = sm['carOutput'].actuatorsOutput
-    is_braking = car_state.brakePressed or actuators_out.brake > 0.0
-    is_accel   = car_state.gasPressed   or (not is_braking and actuators_out.accel > 0.0)
+    # 煞車：直接讀 Toyota CAN 硬體信號，引擎煞車不會誤報
+    # 人踩煞車（brakePressed）亦納入
+    is_braking = car_state.brakePressed or car_state.brakeLightsDEPRECATED
+
+    # 加速：人踩油門 或 ACC 輸出正加速
+    is_accel = car_state.gasPressed or (not is_braking and sm['carOutput'].actuatorsOutput.accel > 0.0)
 
     if is_braking:
       self.speed_color = _COLOR_BRAKE
