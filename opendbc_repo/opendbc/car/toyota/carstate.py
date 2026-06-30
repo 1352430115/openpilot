@@ -255,6 +255,14 @@ class CarState(CarStateBase, CarStateExt):
           "aEgo": round(ret.aEgo, 3),
           "brakePressed": int(ret.brakePressed),
           "brakeHoldActive": int(ret.brakeHoldActive),
+
+          # Brake analysis
+          "UI_BRAKE": int(ret.brakeLightsDEPRECATED),
+          "PCM_ACC_BRAKING": int(cp.vl["PCM_CRUISE"].get("ACC_BRAKING", 0)),
+          "PCM_ACCEL_NET": cp.vl["PCM_CRUISE"].get("ACCEL_NET", 0),
+          "ACC_PERMIT_BRAKING": int(cp_acc.vl["ACC_CONTROL"].get("PERMIT_BRAKING", 0)) if "ACC_CONTROL" in cp_acc.vl else 0,
+          "ACC_ACCEL_CMD": cp_acc.vl["ACC_CONTROL"].get("ACCEL_CMD", 0) if "ACC_CONTROL" in cp_acc.vl else 0,
+          "ACC_ACCEL_CMD_ALT": cp_acc.vl["ACC_CONTROL"].get("ACCEL_CMD_ALT", 0) if "ACC_CONTROL" in cp_acc.vl else 0,
         }
 
         for sig, val in cp.vl["ESP_CONTROL"].items():
