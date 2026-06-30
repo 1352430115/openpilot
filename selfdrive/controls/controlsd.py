@@ -143,9 +143,6 @@ class Controls(ControlsExt):
     else:
       new_desired_curvature = model_v2.action.desiredCurvature if CC.latActive else self.curvature
 
-    # 抑制左偏 V2 (Roadside Left Bias Suppression)
-    try:
-
     # ============================================================================
     # 抑制左偏 V2.1 (Roadside Left Bias Suppression)
     #
@@ -158,7 +155,7 @@ class Controls(ControlsExt):
     # 不需要修改下面任何判斷式。
     # ============================================================================
     try:
-      LEFT_BIAS_SIGN = -1      # 改成 1 = 左偏為正值；-1 = 左偏為負值
+      LEFT_BIAS_SIGN = 1      # 改成 1 = 左偏為正值；-1 = 左偏為負值
       LEFT_BIAS_THRESHOLD = 0.00025
 
       right_prob = float(model_v2.laneLineProbs[2]) if len(model_v2.laneLineProbs) > 2 else 0.0
