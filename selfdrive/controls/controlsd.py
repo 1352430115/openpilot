@@ -145,6 +145,22 @@ class Controls(ControlsExt):
 
     # 抑制左偏 V2 (Roadside Left Bias Suppression)
     try:
+
+    # ============================================================================
+    # 抑制左偏 V2.1 (Roadside Left Bias Suppression)
+    #
+    # LEFT_BIAS_SIGN：
+    #   1  = 模型往左時，curvature_delta 為正值
+    #  -1  = 模型往左時，curvature_delta 為負值
+    #
+    # 若測試發現方向相反：
+    # 只需把 LEFT_BIAS_SIGN 在 1 / -1 間切換即可，
+    # 不需要修改下面任何判斷式。
+    # ============================================================================
+    try:
+      LEFT_BIAS_SIGN = -1      # 改成 1 = 左偏為正值；-1 = 左偏為負值
+      LEFT_BIAS_THRESHOLD = 0.00025
+
       right_prob = float(model_v2.laneLineProbs[2]) if len(model_v2.laneLineProbs) > 2 else 0.0
       right_y = float(model_v2.laneLines[2].y[0]) if len(model_v2.laneLines) > 2 and len(model_v2.laneLines[2].y) > 0 else 0.0
 
@@ -154,12 +170,15 @@ class Controls(ControlsExt):
 
         curvature_delta = new_desired_curvature - self.desired_curvature
 
-        if curvature_delta < -0.00025:
+        # 判斷模型是否持續往左偏
+        left_bias = (curvature_delta * LEFT_BIAS_SIGN) > LEFT_BIAS_THRESHOLD
+
+        if left_bias:
           self.roadside_left_bias_counter = min(self.roadside_left_bias_counter + 1, 30)
         else:
           self.roadside_left_bias_counter = max(self.roadside_left_bias_counter - 1, 0)
 
-        if curvature_delta < -0.00025:
+        if left_bias:
 
           if self.roadside_left_bias_counter >= 25:
             suppress_factor = 0.10
@@ -180,6 +199,7 @@ class Controls(ControlsExt):
 
     except Exception:
       self.roadside_left_bias_counter = 0
+
 
     self.desired_curvature, curvature_limited = clip_curvature(CS.vEgo, self.desired_curvature, new_desired_curvature, lp.roll)
     lat_delay = self.sm["liveDelay"].lateralDelay + LAT_SMOOTH_SECONDS
