@@ -22,9 +22,10 @@ from openpilot.selfdrive.ui.onroad.hud_renderer import FONT_SIZES, COLORS
 # 紅色：ACC 主動液壓煞車（後車看到煞車燈亮）
 #
 # 煞車判斷來源：carState.brakeLightsDEPRECATED
-#   由 carstate.py 解析 CAN 信號 BRAKE_LIGHTS_ACC（ESP_CONTROL frame）
-#   此信號為 Toyota 車輛實際亮起煞車燈的硬體信號。
-#   引擎煞車、放油門減速不會觸發此信號。
+#   目前使用 Toyota PCM_CRUISE 的 ACC_BRAKING 訊號。
+#   此訊號代表 ACC 已開始主動減速，可能包含收油滑行，
+#   並非車輛實際煞車燈硬體回報。
+#   人踩煞車(brakePressed)仍維持最高優先權。
 #
 # 加速判斷來源：carState.gasPressed 或 carOutput.actuatorsOutput.accel > 0
 #
@@ -57,8 +58,8 @@ class SpeedRenderer:
     speed_conversion = CV.MS_TO_KPH if ui_state.is_metric else CV.MS_TO_MPH
     self.speed = max(0.0, v_ego * speed_conversion)
 
-    # 煞車：直接讀 Toyota CAN 硬體信號，引擎煞車不會誤報
-    # 人踩煞車（brakePressed）亦納入
+    # 煞車：ACC_BRAKING + 人踩煞車
+    # 人踩煞車(brakePressed)優先，ACC_BRAKING 用於 OP 主動減速顯示
     is_braking = car_state.brakePressed or car_state.brakeLightsDEPRECATED
 
     # 加速：人踩油門 或 ACC 輸出正加速
