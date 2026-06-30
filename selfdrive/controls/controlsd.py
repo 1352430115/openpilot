@@ -51,100 +51,19 @@ class Controls(ControlsExt):
     self.curvature = 0.0
     self.desired_curvature = 0.0
 
-    # 抑制左偏 V2 (Roadside Left Bias Suppression)
-    self.roadside_left_bias_counter = 0
-
-    self.pose_calibrator = PoseCalibrator()
-    self.calibrated_pose: Pose | None = None
-
-    self.LoC = LongControl(self.CP, self.CP_SP)
-    self.VM = VehicleModel(self.CP)
-    self.LaC: LatControl
-    if self.CP.steerControlType == car.CarParams.SteerControlType.angle:
-      self.LaC = LatControlAngle(self.CP, self.CP_SP, self.CI, DT_CTRL)
-    elif self.CP.lateralTuning.which() == 'pid':
-      self.LaC = LatControlPID(self.CP, self.CP_SP, self.CI, DT_CTRL)
-    elif self.CP.lateralTuning.which() == 'torque':
-      self.LaC = LatControlTorque(self.CP, self.CP_SP, self.CI, DT_CTRL)
-
-    self.LaC = ControlsExt.initialize_lateral_control(self, self.LaC, self.CI, DT_CTRL)
-
-  def update(self):
-    self.sm.update(15)
-    if self.sm.updated["liveCalibration"]:
-      self.pose_calibrator.feed_live_calib(self.sm['liveCalibration'])
-    if self.sm.updated["livePose"]:
-      device_pose = Pose.from_live_pose(self.sm['livePose'])
-      self.calibrated_pose = self.pose_calibrator.build_calibrated_pose(device_pose)
-
-  def state_control(self):
-    CS = self.sm['carState']
-
-    # Update VehicleModel
-    lp = self.sm['liveParameters']
-    x = max(lp.stiffnessFactor, 0.1)
-    sr = max(lp.steerRatio, 0.1)
-    self.VM.update_params(x, sr)
-
-    steer_angle_without_offset = math.radians(CS.steeringAngleDeg - lp.angleOffsetDeg)
-    self.curvature = -self.VM.calc_curvature(steer_angle_without_offset, CS.vEgo, lp.roll)
-
-    # Update Torque Params
-    if self.CP.lateralTuning.which() == 'torque':
-      torque_params = self.sm['liveTorqueParameters']
-      if self.sm.all_checks(['liveTorqueParameters']) and torque_params.useParams:
-        self.LaC.update_live_torque_params(torque_params.latAccelFactorFiltered, torque_params.latAccelOffsetFiltered,
-                                           torque_params.frictionCoefficientFiltered)
-
-        self.LaC.extension.update_limits()
-
-      self.LaC.extension.update_model_v2(self.sm['modelV2'])
-
-      self.LaC.extension.update_lateral_lag(self.lat_delay)
-
-    long_plan = self.sm['longitudinalPlan']
-    model_v2 = self.sm['modelV2']
-
-    CC = car.CarControl.new_message()
-    CC.enabled = self.sm['selfdriveState'].enabled
-
-    # Check which actuators can be enabled
-    standstill = abs(CS.vEgo) <= max(self.CP.minSteerSpeed, 0.3) or CS.standstill
-
-    # Get which state to use for active lateral control
-    _lat_active = self.get_lat_active(self.sm)
-
-    CC.latActive = _lat_active and not CS.steerFaultTemporary and not CS.steerFaultPermanent and \
-                   (not standstill or self.CP.steerAtStandstill)
-    CC.longActive = CC.enabled and not any(e.overrideLongitudinal for e in self.sm['onroadEvents']) and \
-                    (self.CP.openpilotLongitudinalControl or not self.CP_SP.pcmCruiseSpeed)
-
-    actuators = CC.actuators
-    actuators.longControlState = self.LoC.long_control_state
-
-    # Enable blinkers while lane changing
-    if model_v2.meta.laneChangeState != LaneChangeState.off:
-      CC.leftBlinker = model_v2.meta.laneChangeDirection == LaneChangeDirection.left
-      CC.rightBlinker = model_v2.meta.laneChangeDirection == LaneChangeDirection.right
-
-    if not CC.latActive:
-      self.LaC.reset()
-    if not CC.longActive:
-      self.LoC.reset()
-
-    # accel PID loop
-    pid_accel_limits = self.CI.get_pid_accel_limits(self.CP, self.CP_SP, CS.vEgo, CS.vCruise * CV.KPH_TO_MS)
-    actuators.accel = float(self.LoC.update(CC.longActive, CS, long_plan.aTarget, long_plan.shouldStop, pid_accel_limits))
-
-    # Steering PID loop and lateral MPC
-    # Reset desired curvature to current to avoid violating the limits on engage
-    if self.sm.valid['lateralManeuverPlan']:
-      new_desired_curvature = self.sm['lateralManeuverPlan'].desiredCurvature if CC.latActive else self.curvature
-    else:
-      new_desired_curvature = model_v2.action.desiredCurvature if CC.latActive else self.curvature
-
-    # 抑制左偏 V2 (Roadside Left Bias Suppression)
+    # ============================================================================
+    # 抑制左偏 V2.1 (Roadside Left Bias Suppression)
+    #
+    # LEFT_BIAS_SIGN：
+    #   1  = 模型往左時 curvature_delta 為正值
+    #  -1  = 模型往左時 curvature_delta 為負值
+    #
+    # 若抑制方向相反，只需將 LEFT_BIAS_SIGN 改成 1 或 -1。
+    # ============================================================================
     try:
+      LEFT_BIAS_SIGN = -1          # ← 改成 1 即可切換另一個方向
+      LEFT_BIAS_THRESHOLD = 0.00025
+
       right_prob = float(model_v2.laneLineProbs[2]) if len(model_v2.laneLineProbs) > 2 else 0.0
       right_y = float(model_v2.laneLines[2].y[0]) if len(model_v2.laneLines) > 2 and len(model_v2.laneLines[2].y) > 0 else 0.0
 
@@ -154,12 +73,15 @@ class Controls(ControlsExt):
 
         curvature_delta = new_desired_curvature - self.desired_curvature
 
-        if curvature_delta < -0.00025:
+        # 判斷模型目前是否持續往左偏
+        left_bias = (curvature_delta * LEFT_BIAS_SIGN) > LEFT_BIAS_THRESHOLD
+
+        if left_bias:
           self.roadside_left_bias_counter = min(self.roadside_left_bias_counter + 1, 30)
         else:
           self.roadside_left_bias_counter = max(self.roadside_left_bias_counter - 1, 0)
 
-        if curvature_delta < -0.00025:
+        if left_bias:
 
           if self.roadside_left_bias_counter >= 25:
             suppress_factor = 0.10
