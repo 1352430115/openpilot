@@ -1,9 +1,4 @@
 import copy
-import os
-import csv
-import time
-from datetime import datetime, timedelta, timezone
-
 from opendbc.can import CANDefine, CANParser
 from opendbc.car import Bus, DT_CTRL, create_button_events, structs
 from opendbc.car.common.conversions import Conversions as CV
@@ -59,10 +54,6 @@ class CarState(CarStateBase, CarStateExt):
     self.lkas_hud = {}
     self.gvc = 0.0
     self.secoc_synchronization = None
-
-    # SCI Brake CAN Logger
-    self._brake_log_last = 0.0
-    self._brake_log_dir = "/data/media/0/realdata/brake_can"
 
   def update(self, can_parsers) -> tuple[structs.CarState, structs.CarStateSP]:
     cp = can_parsers[Bus.pt]
@@ -224,11 +215,6 @@ class CarState(CarStateBase, CarStateExt):
     ret.buttonEvents = buttonEvents
 
     CarStateExt.update(self, ret, ret_sp, can_parsers)
-
-
-    # =========================================================================
-    # SCI 全訊號進階煞車記錄器 (放於 update 結尾，確保 vEgo, aEgo 已更新)
-    # =========================================================================
     try:
       now = time.monotonic()
       if now - self._brake_log_last >= 0.1:
