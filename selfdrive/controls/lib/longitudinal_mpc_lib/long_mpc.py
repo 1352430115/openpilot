@@ -415,7 +415,7 @@ class LongitudinalMpc:
     LEAD_DECEL_COUNT = 2           # 至少下降幾次才觸發
 
     # 前車減速量 -> 基礎 Offset(m)
-    LEAD_DECEL_BP = [0.3, 0.8, 1.5]
+    LEAD_DECEL_BP = [0.2, 0.6, 1.2]
     LEAD_OFFSET_BP = [1.0, 2.0, 3.0]
 
     # Adaptive Offset 距離倍率
