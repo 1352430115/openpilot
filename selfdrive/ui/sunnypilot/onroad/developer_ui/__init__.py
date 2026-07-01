@@ -106,26 +106,146 @@ class DeveloperUiRenderer(Widget):
   def _draw_right_dev_ui_element(self, x: int, y: int, element: UiElement) -> int:
     x += 0
     y += 230
+
     container_width = 184
+
     label_size = 28
     value_size = 60
     unit_size = 28
-    label_width = measure_text_cached(self._font_bold, element.label, label_size, 0).x
+
+    # ===== 雙行模式 =====
+    # element.value 內含 '\n' 時：
+    # DES  1.32
+    # ACT  1.26
+    if "\n" in element.value:
+      lines = element.value.split("\n")
+
+      line_font_size = 48
+      line_spacing = 52
+
+      start_y = y + 15
+
+      for i, line in enumerate(lines):
+        line_width = measure_text_cached(
+          self._font_bold,
+          line,
+          line_font_size,
+          0
+        ).x
+
+        centered_x = x + (container_width - line_width) / 2
+
+        rl.draw_text_ex(
+          self._font_bold,
+          line,
+          rl.Vector2(centered_x, start_y + i * line_spacing),
+          line_font_size,
+          0,
+          element.color
+        )
+
+      return 130
+
+    # ===== 一般模式（維持原本） =====
+
+    label_width = measure_text_cached(
+      self._font_bold,
+      element.label,
+      label_size,
+      0
+    ).x
+
     centered_label_x = x + (container_width - label_width) / 2
-    rl.draw_text_ex(self._font_bold, element.label, rl.Vector2(centered_label_x, y), label_size, 0, rl.WHITE)
+
+    rl.draw_text_ex(
+      self._font_bold,
+      element.label,
+      rl.Vector2(centered_label_x, y),
+      label_size,
+      0,
+      rl.WHITE
+    )
 
     y += 45
-    value_width = measure_text_cached(self._font_bold, element.value, value_size, 0).x
+
+    value_width = measure_text_cached(
+      self._font_bold,
+      element.value,
+      value_size,
+      0
+    ).x
+
     centered_value_x = x + (container_width - value_width) / 2
-    rl.draw_text_ex(self._font_bold, element.value, rl.Vector2(centered_value_x, y), value_size, 0, element.color)
+
+    # ===== 雙色模式（例如 CPU AVG/MAX 各自上色）=====
+    if element.label == "CPU" and element.color2 is not None:
+      avg_text, max_text = element.value.split("/", 1)
+      sep_text = "/"
+
+      avg_width = measure_text_cached(self._font_bold, avg_text, value_size, 0).x
+      sep_width = measure_text_cached(self._font_bold, sep_text, value_size, 0).x
+
+      draw_x = centered_value_x
+
+      rl.draw_text_ex(
+        self._font_bold,
+        avg_text,
+        rl.Vector2(draw_x, y),
+        value_size,
+        0,
+        element.color
+      )
+      draw_x += avg_width
+
+      rl.draw_text_ex(
+        self._font_bold,
+        sep_text,
+        rl.Vector2(draw_x, y),
+        value_size,
+        0,
+        rl.WHITE
+      )
+      draw_x += sep_width
+
+      rl.draw_text_ex(
+        self._font_bold,
+        max_text,
+        rl.Vector2(draw_x, y),
+        value_size,
+        0,
+        element.color2
+      )
+    else:
+      rl.draw_text_ex(
+        self._font_bold,
+        element.value,
+        rl.Vector2(centered_value_x, y),
+        value_size,
+        0,
+        element.color
+      )
 
     if element.unit:
-      units_height = measure_text_cached(self._font_bold, element.unit, unit_size, 0).x
+      units_height = measure_text_cached(
+        self._font_bold,
+        element.unit,
+        unit_size,
+        0
+      ).x
 
       units_x = x + container_width
       units_y = y + (value_size / 2) + (units_height / 2)
 
-      rl.draw_text_pro(self._font_bold, element.unit, rl.Vector2(units_x, units_y), rl.Vector2(0, 0), -90.0, unit_size, 0, rl.WHITE)
+      rl.draw_text_pro(
+        self._font_bold,
+        element.unit,
+        rl.Vector2(units_x, units_y),
+        rl.Vector2(0, 0),
+        -90.0,
+        unit_size,
+        0,
+        rl.WHITE
+      )
 
     return 130
 

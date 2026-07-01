@@ -18,6 +18,7 @@ class UiElement:
   label: str
   unit: str
   color: rl.Color
+  color2: rl.Color = None
   val_text: str = ""
   label_text: str = ""
   unit_text: str = ""
@@ -168,16 +169,35 @@ class ActualLateralAccelElement(LateralControlElement):
     self.unit = ""
 
   def update(self, sm, is_metric: bool) -> UiElement:
-    # DES ACC：Planner 期望縱向加速度
-    des_acc = sm['modelV2'].action.desiredAcceleration
-    value = f"{des_acc:.2f}"
-    if des_acc > 0.10:
-      color = rl.Color(0,255,0,255)
-    elif des_acc < -0.10:
-      color = rl.RED
+    controls_state = sm['controlsState']
+
+    curvature = controls_state.curvature
+    desired_curvature = controls_state.desiredCurvature
+
+    v_ego = sm['carState'].vEgo
+    roll = sm['liveParameters'].roll if sm.valid['liveParameters'] else 0.0
+
+    lat_active = sm['carControl'].latActive
+    steer_override = sm['carState'].steeringPressed
+
+    # ===== 實際橫向加速度 =====
+    actual_lat_accel = (curvature * v_ego ** 2) - (roll * 9.81)
+
+    # ===== 目標橫向加速度 =====
+    desired_lat_accel = (desired_curvature * v_ego ** 2) - (roll * 9.81)
+
+    if lat_active:
+      value = (
+        f"DES {desired_lat_accel:>5.2f}\n"
+        f"ACT {actual_lat_accel:>5.2f}"
+      )
     else:
-      color = rl.WHITE
-    return UiElement(value, "DES ACC", self.unit, color)
+      value = "DES -\nACT -"
+
+    color = self.get_lat_color(lat_active, steer_override)
+
+    # label 留空，由 __init__.py 負責雙行繪製
+    return UiElement(value, "", self.unit, color)
 
 
 class DesiredLateralAccelElement(LateralControlElement):
@@ -371,13 +391,19 @@ class CpuUsageElement:
     else:
       avg_usage = 0
       max_usage = 0
-    if max_usage > 80:
-      color = rl.RED
-    elif max_usage >= 50:
-      color = rl.Color(255, 188, 0, 255)
-    else:
-      color = rl.Color(0, 255, 0, 255)
-    return UiElement(f"{int(round(avg_usage))}/{int(max_usage)}", "CPU", self.unit, color)
+
+    def _usage_color(usage: float) -> rl.Color:
+      if usage > 80:
+        return rl.RED
+      elif usage >= 50:
+        return rl.Color(255, 188, 0, 255)
+      else:
+        return rl.Color(0, 255, 0, 255)
+
+    avg_color = _usage_color(avg_usage)
+    max_color = _usage_color(max_usage)
+
+    return UiElement(f"{int(round(avg_usage))}/{int(max_usage)}", "CPU", self.unit, avg_color, max_color)
 
 
 class CpuTempElement:
