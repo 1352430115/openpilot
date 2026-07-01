@@ -69,13 +69,21 @@ class ChevronMetrics:
       unit = "m" if ui_state.is_metric else "ft"
       if not ui_state.is_metric:
         val *= 3.28084
-      text_lines.append(f"{val:.0f} {unit}")
+      # Chevron Metrics V2：
+      # 距離維持使用 m / ft
+      distance_text = f"{val:.0f} {unit}"
+      text_lines.append(distance_text)
 
     # Speed
     if ui_state.chevron_metrics == ChevronOptions.SPEED_ONLY or ui_state.chevron_metrics == ChevronOptions.ALL:
       multiplier = CV.MS_TO_KPH if ui_state.is_metric else CV.MS_TO_MPH
       val = max(0.0, (v_rel + v_ego) * multiplier)
-      unit = "km/h" if ui_state.is_metric else "mph"
+      # Chevron Metrics V2：
+      # All 模式速度顯示 km，其餘模式維持 km/h
+      if ui_state.chevron_metrics == ChevronOptions.ALL:
+        unit = "km" if ui_state.is_metric else "mi"
+      else:
+        unit = "km/h" if ui_state.is_metric else "mph"
       text_lines.append(f"{val:.0f} {unit}")
 
     # Time to collision
