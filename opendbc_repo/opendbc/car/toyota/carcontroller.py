@@ -32,7 +32,7 @@ MAX_PITCH_COMPENSATION = 1.5  # m/s^2
 # LKA limits
 # EPS faults if you apply torque while the steering rate is above 100 deg/s for too long
 MAX_STEER_RATE = 100  # deg/s
-MAX_STEER_RATE_FRAMES = 17  # tx control frames needed before torque can be cut
+MAX_STEER_RATE_FRAMES = 18  # tx control frames needed before torque can be cut
 
 # EPS allows user torque above threshold for 50 frames before permanently faulting
 MAX_USER_TORQUE = 500
@@ -88,6 +88,13 @@ class CarController(CarControllerBase, GasInterceptorCarController):
     hud_control = CC.hudControl
     pcm_cancel_cmd = CC.cruiseControl.cancel
     lat_active = CC.latActive and abs(CS.out.steeringTorque) < MAX_USER_TORQUE
+    # 動態調整 STEER_DELTA_DOWN
+    # 40 km/h 以下：25（維持大角度回正能力）
+    # 40 km/h 以上：20（提升高速回正線性）
+    if CS.out.vEgo > (40 / 3.6):
+      self.params.STEER_DELTA_DOWN = 20
+    else:
+      self.params.STEER_DELTA_DOWN = 25
 
     if len(CC.orientationNED) == 3:
       self.pitch.update(CC.orientationNED[1])
