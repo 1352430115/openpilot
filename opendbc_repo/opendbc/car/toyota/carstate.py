@@ -1,5 +1,4 @@
 import copy
-
 from opendbc.can import CANDefine, CANParser
 from opendbc.car import Bus, DT_CTRL, create_button_events, structs
 from opendbc.car.common.conversions import Conversions as CV
@@ -74,7 +73,9 @@ class CarState(CarStateBase, CarStateExt):
 
     ret.brakePressed = cp.vl["BRAKE_MODULE"]["BRAKE_PRESSED"] != 0
     ret.brakeHoldActive = cp.vl["ESP_CONTROL"]["BRAKE_HOLD_ACTIVE"] == 1
-
+    # SCI: ACC 主動煞車燈信號（引擎煞車不會觸發）
+    # SCI：若 DBC 沒有 BRAKE_LIGHTS_ACC，不讓 carstate 因 KeyError 崩潰
+    ret.brakeLightsDEPRECATED = bool(cp.vl["PCM_CRUISE"]["ACC_BRAKING"])
     if self.CP.flags & ToyotaFlags.SECOC.value:
       self.secoc_synchronization = copy.copy(cp.vl["SECOC_SYNCHRONIZATION"])
       ret.gasPressed = cp.vl["GAS_PEDAL"]["GAS_PEDAL_USER"] > 0
@@ -214,6 +215,64 @@ class CarState(CarStateBase, CarStateExt):
     ret.buttonEvents = buttonEvents
 
     CarStateExt.update(self, ret, ret_sp, can_parsers)
+    try:
+      now = time.monotonic()
+      if now - self._brake_log_last >= 0.1:
+        self._brake_log_last = now
+        tz = timezone(timedelta(hours=8))
+        dt = datetime.now(tz)
+        os.makedirs(self._brake_log_dir, exist_ok=True)
+
+        for fn in os.listdir(self._brake_log_dir):
+          if fn.endswith(".csv"):
+            try:
+              d = datetime.strptime(fn[:-4], "%Y-%m-%d").date()
+              if d < (dt.date() - timedelta(days=2)):
+                os.remove(os.path.join(self._brake_log_dir, fn))
+            except:
+              pass
+
+        p = os.path.join(self._brake_log_dir, dt.strftime("%Y-%m-%d.csv"))
+        nf = not os.path.exists(p)
+
+        log_data = {
+          "time": dt.strftime("%H:%M:%S.%f")[:-3],
+          "vEgo": round(ret.vEgo, 3),
+          "aEgo": round(ret.aEgo, 3),
+          "brakePressed": int(ret.brakePressed),
+          "brakeHoldActive": int(ret.brakeHoldActive),
+
+          # Brake analysis
+          "UI_BRAKE": int(ret.brakeLightsDEPRECATED),
+          "PCM_ACC_BRAKING": int(cp.vl["PCM_CRUISE"].get("ACC_BRAKING", 0)),
+          "PCM_ACCEL_NET": cp.vl["PCM_CRUISE"].get("ACCEL_NET", 0),
+          "ACC_PERMIT_BRAKING": int(cp_acc.vl["ACC_CONTROL"].get("PERMIT_BRAKING", 0)) if "ACC_CONTROL" in cp_acc.vl else 0,
+          "ACC_ACCEL_CMD": cp_acc.vl["ACC_CONTROL"].get("ACCEL_CMD", 0) if "ACC_CONTROL" in cp_acc.vl else 0,
+          "ACC_ACCEL_CMD_ALT": cp_acc.vl["ACC_CONTROL"].get("ACCEL_CMD_ALT", 0) if "ACC_CONTROL" in cp_acc.vl else 0,
+        }
+
+        for sig, val in cp.vl["ESP_CONTROL"].items():
+          log_data[f"ESP_{sig}"] = val
+
+        for sig, val in cp.vl["PCM_CRUISE"].items():
+          log_data[f"PCM_{sig}"] = val
+
+        if "PCM_CRUISE_2" in cp.vl:
+          for sig, val in cp.vl["PCM_CRUISE_2"].items():
+            log_data[f"PCM2_{sig}"] = val
+
+        if "ACC_CONTROL" in cp_acc.vl:
+          for sig, val in cp_acc.vl["ACC_CONTROL"].items():
+            log_data[f"ACC_{sig}"] = val
+
+        with open(p, "a", newline="") as f:
+          w = csv.writer(f)
+          if nf:
+            w.writerow(list(log_data.keys()))
+          w.writerow(list(log_data.values()))
+    except Exception:
+      pass
+    # =========================================================================
 
     return ret, ret_sp
 
