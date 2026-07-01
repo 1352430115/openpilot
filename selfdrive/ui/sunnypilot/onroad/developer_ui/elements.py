@@ -91,7 +91,7 @@ class RelDistElement(LeadInfoElement):
   def update(self, sm, is_metric: bool) -> UiElement:
     lead_status, lead_d_rel, _ = self.get_lead_status(sm)
     value = f"{lead_d_rel:.0f}" if lead_status else "-"
-    color = self.get_lead_color(lead_d_rel) if lead_status else rl.WHITE
+    color = rl.WHITE
     return UiElement(value, "REL DIST", self.unit, color)
 
 
@@ -106,7 +106,18 @@ class RelSpeedElement(LeadInfoElement):
 
     conversion = CV.MS_TO_KPH if is_metric else CV.MS_TO_MPH
     value = f"{lead_v_rel * conversion:.0f}" if lead_status else "-"
-    color = self.get_lead_color(0, lead_v_rel, use_v_rel=True) if lead_status else rl.WHITE
+    if lead_status:
+      vrel = lead_v_rel * (CV.MS_TO_KPH if is_metric else CV.MS_TO_MPH)
+      if vrel > 5:
+        color = rl.Color(0, 255, 0, 255)
+      elif vrel >= -5:
+        color = rl.WHITE
+      elif vrel >= -15:
+        color = rl.Color(255, 188, 0, 255)
+      else:
+        color = rl.RED
+    else:
+      color = rl.WHITE
 
     return UiElement(value, "REL SPEED", self.unit, color)
 
@@ -154,21 +165,19 @@ class DesiredSteeringAngleElement(LateralControlElement):
 
 class ActualLateralAccelElement(LateralControlElement):
   def __init__(self):
-    self.unit = "m/s^2"
+    self.unit = ""
 
   def update(self, sm, is_metric: bool) -> UiElement:
-    controls_state = sm['controlsState']
-    curvature = controls_state.curvature
-    v_ego = sm['carState'].vEgo
-    roll = sm['liveParameters'].roll if sm.valid['liveParameters'] else 0.0
-    lat_active = sm['carControl'].latActive
-    steer_override = sm['carState'].steeringPressed
-
-    actual_lat_accel = (curvature * v_ego ** 2) - (roll * 9.81)
-    value = f"{actual_lat_accel:.2f}"
-    color = self.get_lat_color(lat_active, steer_override)
-
-    return UiElement(value, "ACTUAL L.A.", self.unit, color)
+    # DES ACC：Planner 期望縱向加速度
+    des_acc = sm['modelV2'].action.desiredAcceleration
+    value = f"{des_acc:.2f}"
+    if des_acc > 0.10:
+      color = rl.Color(0,255,0,255)
+    elif des_acc < -0.10:
+      color = rl.RED
+    else:
+      color = rl.WHITE
+    return UiElement(value, "DES ACC", self.unit, color)
 
 
 class DesiredLateralAccelElement(LateralControlElement):
@@ -346,3 +355,41 @@ class AltitudeElement(GpsInfoElement):
 
     value = f"{altitude:.1f}" if gps_accuracy != 0.0 else "-"
     return UiElement(value, "ALT.", self.unit, rl.WHITE)
+
+
+class CpuUsageElement:
+  def __init__(self):
+    self.unit = "%"
+
+  def update(self, sm, is_metric: bool) -> UiElement:
+    # ===== CPU 使用率 =====
+    # 顯示格式：平均/最高 (例如 35/82)
+    cpu_usage = sm['deviceState'].cpuUsagePercent
+    if len(cpu_usage):
+      avg_usage = sum(cpu_usage) / len(cpu_usage)
+      max_usage = max(cpu_usage)
+    else:
+      avg_usage = 0
+      max_usage = 0
+    if max_usage > 80:
+      color = rl.RED
+    elif max_usage >= 50:
+      color = rl.Color(255, 188, 0, 255)
+    else:
+      color = rl.Color(0, 255, 0, 255)
+    return UiElement(f"{int(round(avg_usage))}/{int(max_usage)}", "CPU", self.unit, color)
+
+
+class CpuTempElement:
+  def __init__(self):
+    self.unit = "°C"
+
+  def update(self, sm, is_metric: bool) -> UiElement:
+    temp = max(sm['deviceState'].cpuTempC) if len(sm['deviceState'].cpuTempC) else 0.0
+    if temp > 80:
+      color = rl.RED
+    elif temp >= 65:
+      color = rl.Color(255, 188, 0, 255)
+    else:
+      color = rl.Color(0, 255, 0, 255)
+    return UiElement(f"{int(round(temp))}", "CPU °C", self.unit, color)
