@@ -120,26 +120,40 @@ class DeveloperUiRenderer(Widget):
     if "\n" in element.value:
       lines = element.value.split("\n")
 
-      line_font_size = 48
+      label_font_size = 36      # DES / ACT
+      value_font_size = 52      # 數值
       line_spacing = 52
 
       start_y = y + 15
 
       for i, line in enumerate(lines):
-        line_width = measure_text_cached(
-          self._font_bold,
-          line,
-          line_font_size,
-          0
-        ).x
+        prefix, value = line.split(maxsplit=1)
 
-        centered_x = x + (container_width - line_width) / 2
+        prefix_width = measure_text_cached(
+          self._font_bold, prefix, label_font_size, 0).x
+
+        value_width = measure_text_cached(
+          self._font_bold, value, value_font_size, 0).x
+
+        total_width = prefix_width + 10 + value_width
+
+        draw_x = x + (container_width - total_width) / 2
+        draw_y = start_y + i * line_spacing
 
         rl.draw_text_ex(
           self._font_bold,
-          line,
-          rl.Vector2(centered_x, start_y + i * line_spacing),
-          line_font_size,
+          prefix,
+          rl.Vector2(draw_x, draw_y + 8),
+          label_font_size,
+          0,
+          element.color
+        )
+
+        rl.draw_text_ex(
+          self._font_bold,
+          value,
+          rl.Vector2(draw_x + prefix_width + 10, draw_y),
+          value_font_size,
           0,
           element.color
         )
