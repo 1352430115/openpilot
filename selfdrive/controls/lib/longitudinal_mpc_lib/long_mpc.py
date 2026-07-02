@@ -448,27 +448,20 @@ class LongitudinalMpc:
         for i in range(LEAD_HISTORY_SIZE - 1)
       )
 
+      lead_total_decel = 0.0
+      if decel_count >= LEAD_DECEL_COUNT and lead.vLead < v_ego:
+        lead_total_decel = self.lead_v_history[0] - self.lead_v_history[-1]
+
       closing_kph = max((v_ego - lead.vLead) * 3.6, 0.0)
-
-      lead_decel_trigger = (
-        decel_count >= LEAD_DECEL_COUNT and
-        lead.vLead < v_ego
-      )
-
-      simulated_decel = np.interp(
+      closing_total_decel = np.interp(
         closing_kph,
         [0.0, 10.0, 20.0, 30.0],
         [0.0, 0.2, 0.6, 1.2]
       )
 
-      closing_trigger = simulated_decel >= LEAD_DECEL_BP[0]
+      total_decel = max(lead_total_decel, closing_total_decel)
 
-      if lead_decel_trigger or closing_trigger:
-
-        if lead_decel_trigger:
-          total_decel = self.lead_v_history[0] - self.lead_v_history[-1]
-        else:
-          total_decel = simulated_decel
+      if total_decel >= LEAD_DECEL_BP[0]:
 
         base_offset = np.interp(
           total_decel,
