@@ -122,8 +122,8 @@ class DeveloperUiRenderer(Widget):
     if "\n" in element.value:
       lines = element.value.split("\n")
 
-      value_font_size = 58
-      line_spacing = 56
+      value_font_size = 60
+      line_spacing = 60
 
       # 標籤只畫一次
       label_width = measure_text_cached(
