@@ -51,9 +51,6 @@ class Controls(ControlsExt):
     self.curvature = 0.0
     self.desired_curvature = 0.0
 
-    # 抑制左偏 V2 (Roadside Left Bias Suppression)
-    self.roadside_left_bias_counter = 0
-
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
 
@@ -116,7 +113,8 @@ class Controls(ControlsExt):
 
     CC.latActive = _lat_active and not CS.steerFaultTemporary and not CS.steerFaultPermanent and \
                    (not standstill or self.CP.steerAtStandstill)
-    CC.longActive = CC.enabled and not any(e.overrideLongitudinal for e in self.sm['onroadEvents']) and \
+    # TEST ONLY: allow longitudinal control while MADS is active
+    CC.longActive = (CC.enabled or self.sm['selfdriveStateSP'].mads.active) and not any(e.overrideLongitudinal for e in self.sm['onroadEvents']) and \
                     (self.CP.openpilotLongitudinalControl or not self.CP_SP.pcmCruiseSpeed)
 
     actuators = CC.actuators
@@ -142,62 +140,6 @@ class Controls(ControlsExt):
       new_desired_curvature = self.sm['lateralManeuverPlan'].desiredCurvature if CC.latActive else self.curvature
     else:
       new_desired_curvature = model_v2.action.desiredCurvature if CC.latActive else self.curvature
-
-    # ============================================================================
-    # 抑制左偏 V2.1 (Roadside Left Bias Suppression)
-    #
-    # LEFT_BIAS_SIGN：
-    #   1  = 模型往左時，curvature_delta 為正值
-    #  -1  = 模型往左時，curvature_delta 為負值
-    #
-    # 若測試發現方向相反：
-    # 只需把 LEFT_BIAS_SIGN 在 1 / -1 間切換即可，
-    # 不需要修改下面任何判斷式。
-    # ============================================================================
-    try:
-      LEFT_BIAS_SIGN = -1      # 改成 1 = 左偏為正值；-1 = 左偏為負值
-      LEFT_BIAS_THRESHOLD = 0.00025
-
-      right_prob = float(model_v2.laneLineProbs[2]) if len(model_v2.laneLineProbs) > 2 else 0.0
-      right_y = float(model_v2.laneLines[2].y[0]) if len(model_v2.laneLines) > 2 and len(model_v2.laneLines[2].y) > 0 else 0.0
-
-      if (CS.vEgo < 70 * CV.KPH_TO_MS and
-          right_prob > 0.6 and
-          right_y > 1.6):
-
-        curvature_delta = new_desired_curvature - self.desired_curvature
-
-        # 判斷模型是否持續往左偏
-        left_bias = (curvature_delta * LEFT_BIAS_SIGN) > LEFT_BIAS_THRESHOLD
-
-        if left_bias:
-          self.roadside_left_bias_counter = min(self.roadside_left_bias_counter + 1, 30)
-        else:
-          self.roadside_left_bias_counter = max(self.roadside_left_bias_counter - 1, 0)
-
-        if left_bias:
-
-          if self.roadside_left_bias_counter >= 25:
-            suppress_factor = 0.10
-          elif self.roadside_left_bias_counter >= 20:
-            suppress_factor = 0.20
-          elif self.roadside_left_bias_counter >= 15:
-            suppress_factor = 0.40
-          else:
-            suppress_factor = 1.00
-
-          if suppress_factor < 1.0:
-            new_desired_curvature = (
-              self.desired_curvature +
-              curvature_delta * suppress_factor
-            )
-      else:
-        self.roadside_left_bias_counter = 0
-
-    except Exception:
-      self.roadside_left_bias_counter = 0
-
-
     self.desired_curvature, curvature_limited = clip_curvature(CS.vEgo, self.desired_curvature, new_desired_curvature, lp.roll)
     lat_delay = self.sm["liveDelay"].lateralDelay + LAT_SMOOTH_SECONDS
 
