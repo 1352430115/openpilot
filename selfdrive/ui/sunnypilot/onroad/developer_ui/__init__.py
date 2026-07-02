@@ -114,45 +114,44 @@ class DeveloperUiRenderer(Widget):
     unit_size = 28
 
     # ===== 雙行模式 =====
-    # element.value 內含 '\n' 時：
-    # DES  1.32
-    # ACT  1.26
+    # element.value 內含 '\n' 時，label 顯示一次（如 "DES/ACT"），
+    # 下方兩行只畫數值：
+    # DES/ACT
+    # -0.20
+    # -0.21
     if "\n" in element.value:
       lines = element.value.split("\n")
 
-      label_font_size = 36      # DES / ACT
-      value_font_size = 52      # 數值
+      value_font_size = 56
       line_spacing = 52
 
-      start_y = y + 15
+      # 標籤只畫一次
+      label_width = measure_text_cached(
+        self._font_bold, element.label, label_size, 0).x
+      centered_label_x = x + (container_width - label_width) / 2
+
+      rl.draw_text_ex(
+        self._font_bold,
+        element.label,
+        rl.Vector2(centered_label_x, y),
+        label_size,
+        0,
+        rl.WHITE
+      )
+
+      start_y = y + 45
 
       for i, line in enumerate(lines):
-        prefix, value = line.split(maxsplit=1)
+        line_width = measure_text_cached(
+          self._font_bold, line, value_font_size, 0).x
 
-        prefix_width = measure_text_cached(
-          self._font_bold, prefix, label_font_size, 0).x
-
-        value_width = measure_text_cached(
-          self._font_bold, value, value_font_size, 0).x
-
-        total_width = prefix_width + 10 + value_width
-
-        draw_x = x + (container_width - total_width) / 2
+        centered_x = x + (container_width - line_width) / 2
         draw_y = start_y + i * line_spacing
 
         rl.draw_text_ex(
           self._font_bold,
-          prefix,
-          rl.Vector2(draw_x, draw_y + 8),
-          label_font_size,
-          0,
-          element.color
-        )
-
-        rl.draw_text_ex(
-          self._font_bold,
-          value,
-          rl.Vector2(draw_x + prefix_width + 10, draw_y),
+          line,
+          rl.Vector2(centered_x, draw_y),
           value_font_size,
           0,
           element.color

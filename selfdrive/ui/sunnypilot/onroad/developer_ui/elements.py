@@ -188,16 +188,16 @@ class ActualLateralAccelElement(LateralControlElement):
 
     if lat_active:
       value = (
-        f"DES {desired_lat_accel:>5.2f}\n"
-        f"ACT {actual_lat_accel:>5.2f}"
+        f"{desired_lat_accel:>5.2f}\n"
+        f"{actual_lat_accel:>5.2f}"
       )
     else:
-      value = "DES -\nACT -"
+      value = "-\n-"
 
     color = self.get_lat_color(lat_active, steer_override)
 
-    # label 留空，由 __init__.py 負責雙行繪製
-    return UiElement(value, "", self.unit, color)
+    # label 為 "DES/ACT"，兩個數值置於下方兩行，由 __init__.py 負責繪製
+    return UiElement(value, "DES/ACT", self.unit, color)
 
 
 class DesiredLateralAccelElement(LateralControlElement):
