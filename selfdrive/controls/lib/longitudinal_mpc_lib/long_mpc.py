@@ -502,64 +502,31 @@ class LongitudinalMpc:
     self.params[:,4] = t_follow
     self.params[:,5] = LEAD_DANGER_FACTOR
 
-        # =========================
-    # 追車加速抑制 V4
-    #
-    # 距離越近 -> 限制越大
-    # 速差越大 -> 限制越大
-    #
-    # 最終限制 = 距離係數 × 速差係數
-    # =========================
-
+        # ============================================================
+    # Closing Controller V5A (第一版)
+    # 依距離建立目標速差(Target Closing)，
+    # 當實際速差超出合理範圍時，限制 MPC 最大正加速度。
+    # ============================================================
     if lead.status:
-
       d = float(lead.dRel)
+      closing_kph = max((v_ego - lead.vLead) * 3.6, 0.0)
 
-      # 自車與前車速差(km/h)
-      # 小於0代表前車比自己快
-      v_rel_kph = max(
-        (v_ego - lead.vLead) * 3.6,
-        0.0
-      )
-
-      # ---------------------------------
-      # 速差係數
-      #
-      # 0km/h  -> 100%
-      # 2km/h  -> 80%
-      # 5km/h  -> 60%
-      # 10km/h -> 50%
-      # 20km/h -> 40%
-      # ---------------------------------
-      speed_factor = np.interp(
-        v_rel_kph,
-        [0.0, 2.0, 5.0, 10.0, 20.0],
-        [1.0, 0.8, 0.6, 0.5, 0.4]
-      )
-
-      # ---------------------------------
-      # 距離係數
-      #
-      # 80m -> 100%
-      # 60m -> 90%
-      # 40m -> 70%
-      # 25m -> 50%
-      # 15m -> 40%
-      # ---------------------------------
-      distance_factor = np.interp(
+      target_closing = np.interp(
         d,
-        [15.0, 25.0, 40.0, 60.0, 80.0],
-        [0.4, 0.5, 0.7, 0.9, 1.0]
+        [15.0,25.0,40.0,60.0,80.0,100.0,120.0],
+        [3.0,6.0,10.0,13.0,18.0,24.0,30.0]
       )
 
-      # 最終追車抑制倍率
-      reduction = speed_factor * distance_factor
+      dead_zone = 2.0
+      closing_error = max(closing_kph - (target_closing + dead_zone), 0.0)
 
-      # 避免加速能力被壓得過低
-      reduction = max(reduction, 0.15)
+      accel_scale = np.interp(
+        closing_error,
+        [0.0,2.0,5.0,8.0,12.0],
+        [1.0,0.65,0.35,0.10,0.0]
+      )
 
-      # 套用到 MPC 最大加速度
-      self.params[:,1] *= reduction
+      self.params[:,1] *= accel_scale
 
     self.run()
     if (np.any(lead_xv_0[FCW_IDXS,0] - self.x_sol[FCW_IDXS,0] < CRASH_DISTANCE) and
