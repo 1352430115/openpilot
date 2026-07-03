@@ -12,7 +12,8 @@ from openpilot.selfdrive.ui.sunnypilot.onroad.developer_ui.elements import (
   UiElement, RelDistElement, RelSpeedElement, SteeringAngleElement,
   DesiredLateralAccelElement, ActualLateralAccelElement, DesiredSteeringAngleElement,
   AEgoElement, LeadSpeedElement, FrictionCoefficientElement, LatAccelFactorElement,
-  SteeringTorqueEpsElement, BearingDegElement, AltitudeElement, DesiredSteeringPIDElement
+  SteeringTorqueEpsElement, BearingDegElement, AltitudeElement, DesiredSteeringPIDElement,
+  CpuUsageElement, CpuTempElement
 )
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.text_measure import measure_text_cached
@@ -42,6 +43,8 @@ class DeveloperUiRenderer(Widget):
     self.rel_dist_elem = RelDistElement()
     self.rel_speed_elem = RelSpeedElement()
     self.steering_angle_elem = SteeringAngleElement()
+    self.cpu_usage_elem = CpuUsageElement()
+    self.cpu_temp_elem = CpuTempElement()
     self.desired_lat_accel_elem = DesiredLateralAccelElement()
     self.actual_lat_accel_elem = ActualLateralAccelElement()
     self.desired_steer_elem = DesiredSteeringAngleElement()
@@ -85,10 +88,10 @@ class DeveloperUiRenderer(Widget):
     elements = [
       self.rel_dist_elem.update(sm, ui_state.is_metric),
       self.rel_speed_elem.update(sm, ui_state.is_metric),
-      self.steering_angle_elem.update(sm, ui_state.is_metric),
+      self.cpu_usage_elem.update(sm, ui_state.is_metric),
     ]
     if controls_state.lateralControlState.which() == 'torqueState':
-      elements.append(self.desired_lat_accel_elem.update(sm, ui_state.is_metric))
+      elements.append(self.cpu_temp_elem.update(sm, ui_state.is_metric))
     elif controls_state.lateralControlState.which() == 'angleState':
       elements.append(self.desired_steer_elem.update(sm, ui_state.is_metric))
     elif controls_state.lateralControlState.which() == 'pidState':
@@ -103,26 +106,159 @@ class DeveloperUiRenderer(Widget):
   def _draw_right_dev_ui_element(self, x: int, y: int, element: UiElement) -> int:
     x += 0
     y += 230
+
     container_width = 184
+
     label_size = 28
     value_size = 60
     unit_size = 28
-    label_width = measure_text_cached(self._font_bold, element.label, label_size, 0).x
+
+    # ===== 雙行模式 =====
+    # element.value 內含 '\n' 時，label 顯示一次（如 "DES/ACT"），
+    # 下方兩行只畫數值：
+    # DES/ACT
+    # -0.20
+    # -0.21
+    if "\n" in element.value:
+      lines = element.value.split("\n")
+
+      value_font_size = 60
+      line_spacing = 64
+
+      # 標籤只畫一次
+      label_width = measure_text_cached(
+        self._font_bold, element.label, label_size, 0).x
+      centered_label_x = x + (container_width - label_width) / 2
+
+      rl.draw_text_ex(
+        self._font_bold,
+        element.label,
+        rl.Vector2(centered_label_x, y),
+        label_size,
+        0,
+        rl.WHITE
+      )
+
+      start_y = y + 45
+
+      for i, line in enumerate(lines):
+        line_width = measure_text_cached(
+          self._font_bold, line, value_font_size, 0).x
+
+        centered_x = x + (container_width - line_width) / 2
+        draw_y = start_y + i * line_spacing
+
+        rl.draw_text_ex(
+          self._font_bold,
+          line,
+          rl.Vector2(centered_x, draw_y),
+          value_font_size,
+          0,
+          element.color
+        )
+
+      return 130
+
+    # ===== 一般模式（維持原本） =====
+
+    label_width = measure_text_cached(
+      self._font_bold,
+      element.label,
+      label_size,
+      0
+    ).x
+
     centered_label_x = x + (container_width - label_width) / 2
-    rl.draw_text_ex(self._font_bold, element.label, rl.Vector2(centered_label_x, y), label_size, 0, rl.WHITE)
+
+    rl.draw_text_ex(
+      self._font_bold,
+      element.label,
+      rl.Vector2(centered_label_x, y),
+      label_size,
+      0,
+      rl.WHITE
+    )
 
     y += 45
-    value_width = measure_text_cached(self._font_bold, element.value, value_size, 0).x
+
+    value_width = measure_text_cached(
+      self._font_bold,
+      element.value,
+      value_size,
+      0
+    ).x
+
     centered_value_x = x + (container_width - value_width) / 2
-    rl.draw_text_ex(self._font_bold, element.value, rl.Vector2(centered_value_x, y), value_size, 0, element.color)
+
+    # ===== 雙色模式（例如 CPU AVG/MAX 各自上色）=====
+    if element.label == "CPU" and element.color2 is not None:
+      avg_text, max_text = element.value.split("/", 1)
+      sep_text = "/"
+
+      avg_width = measure_text_cached(self._font_bold, avg_text, value_size, 0).x
+      sep_width = measure_text_cached(self._font_bold, sep_text, value_size, 0).x
+
+      draw_x = centered_value_x
+
+      rl.draw_text_ex(
+        self._font_bold,
+        avg_text,
+        rl.Vector2(draw_x, y),
+        value_size,
+        0,
+        element.color
+      )
+      draw_x += avg_width
+
+      rl.draw_text_ex(
+        self._font_bold,
+        sep_text,
+        rl.Vector2(draw_x, y),
+        value_size,
+        0,
+        rl.WHITE
+      )
+      draw_x += sep_width
+
+      rl.draw_text_ex(
+        self._font_bold,
+        max_text,
+        rl.Vector2(draw_x, y),
+        value_size,
+        0,
+        element.color2
+      )
+    else:
+      rl.draw_text_ex(
+        self._font_bold,
+        element.value,
+        rl.Vector2(centered_value_x, y),
+        value_size,
+        0,
+        element.color
+      )
 
     if element.unit:
-      units_height = measure_text_cached(self._font_bold, element.unit, unit_size, 0).x
+      units_height = measure_text_cached(
+        self._font_bold,
+        element.unit,
+        unit_size,
+        0
+      ).x
 
       units_x = x + container_width
       units_y = y + (value_size / 2) + (units_height / 2)
 
-      rl.draw_text_pro(self._font_bold, element.unit, rl.Vector2(units_x, units_y), rl.Vector2(0, 0), -90.0, unit_size, 0, rl.WHITE)
+      rl.draw_text_pro(
+        self._font_bold,
+        element.unit,
+        rl.Vector2(units_x, units_y),
+        rl.Vector2(0, 0),
+        -90.0,
+        unit_size,
+        0,
+        rl.WHITE
+      )
 
     return 130
 
