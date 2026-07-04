@@ -57,7 +57,7 @@ T_DIFFS = np.diff(T_IDXS, prepend=[0.])
 COMFORT_BRAKE = 2.5
 STOP_DISTANCE = 6.0
 CRUISE_MIN_ACCEL = -1.2
-CRUISE_MAX_ACCEL = 1.6
+CRUISE_MAX_ACCEL = 1.2
 MIN_X_LEAD_FACTOR = 0.5
 
 def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
@@ -66,20 +66,42 @@ def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
   elif personality==log.LongitudinalPersonality.standard:
     return 1.0
   elif personality==log.LongitudinalPersonality.aggressive:
-    return 0.5
+    return 0.8
   else:
     raise NotImplementedError("Longitudinal personality not supported")
 
 
-def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard):
+def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, v_ego=0.0):
   if personality==log.LongitudinalPersonality.relaxed:
-    return 1.75
+    return 1.55
   elif personality==log.LongitudinalPersonality.standard:
-    return 1.45
-  elif personality==log.LongitudinalPersonality.aggressive:
     return 1.25
+  elif personality==log.LongitudinalPersonality.aggressive:
+    v_kph = v_ego * 3.6
+
+    if v_kph < 45:
+      return 1.25
+    elif v_kph < 70:
+      return 1.15
+    elif v_kph < 95:
+      return 1.05
+    else:
+      return 0.85
   else:
     raise NotImplementedError("Longitudinal personality not supported")
+# 0~45 km/h  : 1.25
+# 低速時保留較大車距，減少走走停停的不適感，
+# 讓市區跟車更柔順自然。
+#
+# 45~70 km/h : 1.15
+# 維持原本較積極的跟車設定，
+# 兼顧反應速度與舒適性。
+#
+# 70~95 km/h   : 1.05
+# 95+ km/h   : 0.85
+# 高速時縮短跟車距離，
+# 提升超車與高速巡航時的靈敏度，
+# 降低過度保守造成的拖速感。
 
 def get_stopped_equivalence_factor(v_lead):
   return (v_lead**2) / (2 * COMFORT_BRAKE)
@@ -177,7 +199,7 @@ def gen_long_ocp():
 
   x0 = np.zeros(X_DIM)
   ocp.constraints.x0 = x0
-  ocp.parameter_values = np.array([-1.2, 1.2, 0.0, 0.0, get_T_FOLLOW(), LEAD_DANGER_FACTOR])
+  ocp.parameter_values = np.array([-1.2, 1.2, 0.0, 0.0, get_T_FOLLOW(v_ego=0.0), LEAD_DANGER_FACTOR])
 
 
   # We put all constraint cost weights to 0 and only set them at runtime
@@ -253,6 +275,8 @@ class LongitudinalMpc:
     self.lead_xv_0 = np.zeros((N+1, 2))
     self.lead_xv_1 = np.zeros((N+1, 2))
     self.set_weights()
+    # 前車速度歷史(最近5幀)，用來判斷是否持續減速
+    self.lead_v_history = []
 
   def set_cost_weights(self, cost_weights, constraint_cost_weights):
     W = np.asfortranarray(np.diag(cost_weights))
@@ -294,6 +318,7 @@ class LongitudinalMpc:
       # prior formula. On radar cars, real radar measurements anchor the trajectory.
       x_lead_traj = float(radar_lead.dRel) + (np.asarray(model_lead.x, dtype=np.float64) - model_lead.x[0])
       v_lead_traj = float(radar_lead.vLead) + (np.asarray(model_lead.v, dtype=np.float64) - model_lead.v[0])
+
     else:
       # Fake a fast lead so MPC stays in the same mode.
       x_lead_traj = 50.0 + (v_ego + 10.0) * LEAD_T_IDXS_MODEL
@@ -305,13 +330,37 @@ class LongitudinalMpc:
     x_lead_traj[0] = max(x_lead_traj[0], min_x_lead)
     v_lead_traj = np.clip(v_lead_traj, 0.0, 1e8)
 
+    # ============================================================
+    # 前車鎖定測試 V1
+    #
+    # 功能：
+    # 停車或低速跟車時，避免前車急煞後因模型預測而誤判前車開始起步。
+    #
+    # 啟動條件：
+    #   - Radar 偵測到前車
+    #   - 前車距離小於 12 m
+    #   - 自車速度小於 2.0 m/s（約 7 km/h）
+    #   - 前車速度小於 0.5 m/s（約 1.8 km/h）
+    #
+    # 僅限制前車預測速度，不影響 V3/V4 邏輯、
+    # 障礙物生成或加速度限制。
+    # ============================================================
+    if (
+      radar_lead.status and
+      radar_lead.dRel < 12.0 and
+      v_ego < 2.0 and
+      radar_lead.vLead < 0.5
+    ):
+      v_lead_cap = max(radar_lead.vLead, 0.0)
+      v_lead_traj = np.minimum(v_lead_traj, v_lead_cap + 0.3)
+
     x_lead_mpc = np.maximum.accumulate(np.interp(T_IDXS, LEAD_T_IDXS_MODEL, x_lead_traj))
     v_lead_mpc = np.interp(T_IDXS, LEAD_T_IDXS_MODEL, v_lead_traj)
     return np.column_stack((x_lead_mpc, v_lead_mpc))
 
   def update(self, v_cruise, modelV2, radarstate, personality=log.LongitudinalPersonality.standard):
-    t_follow = get_T_FOLLOW(personality)
-    v_ego = self.x0[1]
+    v_ego = self.x0[1] 
+    t_follow = get_T_FOLLOW(personality, v_ego)
     model_leads = modelV2.leadsV3
     self.status = model_leads[0].prob > 0.5 or model_leads[1].prob > 0.5
 
@@ -323,21 +372,135 @@ class LongitudinalMpc:
     # To estimate a safe distance from a moving lead, we calculate how much stopping
     # distance that lead needs as a minimum. We can add that to the current distance
     # and then treat that as a stopped car/obstacle at this new distance.
-    lead_0_obstacle = lead_xv_0[:,0] + get_stopped_equivalence_factor(lead_xv_0[:,1])
-    lead_1_obstacle = lead_xv_1[:,0] + get_stopped_equivalence_factor(lead_xv_1[:,1])
+    lead_stop_offset_0 = np.where(lead_xv_0[:,1] < 1.0, 1.0, 0.0)
+    lead_stop_offset_1 = np.where(lead_xv_1[:,1] < 1.0, 1.0, 0.0)
+
+    lead_0_obstacle = (
+      lead_xv_0[:,0]
+      + get_stopped_equivalence_factor(lead_xv_0[:,1])
+      - lead_stop_offset_0
+    )
+
+    lead_1_obstacle = (
+      lead_xv_1[:,0]
+      + get_stopped_equivalence_factor(lead_xv_1[:,1])
+      - lead_stop_offset_1
+    )
 
     # Fake an obstacle for cruise, this ensures smooth acceleration to set speed
     # when the leads are no factor.
     v_lower = v_ego + (T_IDXS * CRUISE_MIN_ACCEL * 1.05)
     # TODO does this make sense when max_a is negative?
     v_upper = v_ego + (T_IDXS * CRUISE_MAX_ACCEL * 1.05)
-    v_cruise_clipped = np.clip(v_cruise * np.ones(N+1), v_lower, v_upper)
-    cruise_obstacle = np.cumsum(T_DIFFS * v_cruise_clipped) + get_safe_obstacle_distance(v_cruise_clipped, t_follow)
+    coast_speed = v_cruise
 
-    x_obstacles = np.column_stack([lead_0_obstacle, lead_1_obstacle, cruise_obstacle])
+    lead = radarstate.leadOne
+
+    # ============================================================
+    # Lead Decel Predictor Adaptive V1
+    #
+    # 功能：
+    # 1. 最近4幀偵測前車是否持續減速
+    # 2. 近距離降低介入，避免停紅燈重煞
+    # 3. 中距離維持 V3 效果
+    # 4. 遠距離逐步放大 Offset，提早建立減速度
+    #
+    # 建議調整順序：
+    # 1. LEAD_DISTANCE_SCALE
+    # 2. LEAD_OFFSET_BP
+    # 3. LEAD_MIN_DECEL
+    # ============================================================
+
+    LEAD_HISTORY_SIZE = 4          # 歷史速度幀數
+    LEAD_DECEL_COUNT = 2           # 至少下降幾次才觸發
+
+    # 前車減速量 -> 基礎 Offset(m)
+    LEAD_DECEL_BP = [0.2, 0.6, 1.2]
+    LEAD_OFFSET_BP = [1.0, 2.0, 3.0]
+
+    # Adaptive Offset 距離倍率
+    LEAD_DISTANCE_BP = [10.0, 15.0, 20.0, 30.0, 40.0, 55.0, 70.0, 90.0, 120.0]
+    LEAD_DISTANCE_SCALE = [0.2, 0.5, 0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0]
+
+    # 40m 外 Radar 誤差補償
+    LEAD_MIN_DECEL_BP = [40.0, 60.0, 90.0, 120.0]
+    LEAD_MIN_DECEL = [0.00, 0.05, 0.12, 0.20]
+
+    if lead.status:
+      self.lead_v_history.append(float(lead.vLead))
+      if len(self.lead_v_history) > LEAD_HISTORY_SIZE:
+        self.lead_v_history.pop(0)
+    else:
+      self.lead_v_history.clear()
+
+    if lead.status and len(self.lead_v_history) == LEAD_HISTORY_SIZE:
+
+      near_lead = lead.dRel <= 40.0
+
+      min_decel = 0.0 if near_lead else np.interp(
+        lead.dRel,
+        LEAD_MIN_DECEL_BP,
+        LEAD_MIN_DECEL
+      )
+
+      decel_count = sum(
+        (self.lead_v_history[i] - self.lead_v_history[i + 1]) > min_decel
+        for i in range(LEAD_HISTORY_SIZE - 1)
+      )
+
+      lead_total_decel = 0.0
+      if decel_count >= LEAD_DECEL_COUNT and lead.vLead < v_ego:
+        lead_total_decel = self.lead_v_history[0] - self.lead_v_history[-1]
+
+      closing_kph = max((v_ego - lead.vLead) * 3.6, 0.0)
+      closing_total_decel = np.interp(
+        closing_kph,
+        [0.0, 10.0, 20.0, 30.0],
+        [0.0, 0.2, 0.6, 1.2]
+      )
+
+      total_decel = max(lead_total_decel, closing_total_decel)
+
+      if total_decel >= LEAD_DECEL_BP[0]:
+
+        base_offset = np.interp(
+          total_decel,
+          LEAD_DECEL_BP,
+          LEAD_OFFSET_BP
+        )
+
+        distance_scale = np.interp(
+          lead.dRel,
+          LEAD_DISTANCE_BP,
+          LEAD_DISTANCE_SCALE
+        )
+
+        offset = base_offset * distance_scale
+
+        # 將障礙物往前拉近，讓 MPC 提早建立減速度
+        lead_0_obstacle -= offset
+
+
+    v_cruise_clipped = np.clip(
+      coast_speed * np.ones(N + 1),
+      v_lower,
+      v_upper
+    )
+    cruise_obstacle = np.cumsum(T_DIFFS * v_cruise_clipped) + \
+      get_safe_obstacle_distance(v_cruise_clipped, t_follow)
+
+    x_obstacles = np.column_stack([
+      lead_0_obstacle,
+      lead_1_obstacle,
+      cruise_obstacle
+    ])
+
     self.source = MPC_SOURCES[np.argmin(x_obstacles[0])]
 
     self.yref[:,:] = 0.0
+
+    #self.yref[:, 3] = bias
+ 
     for i in range(N):
       self.solver.set(i, "yref", self.yref[i])
     self.solver.set(N, "yref", self.yref[N][:COST_E_DIM])
@@ -345,9 +508,69 @@ class LongitudinalMpc:
     self.params[:,0] = ACCEL_MIN
     self.params[:,1] = ACCEL_MAX
     self.params[:,2] = np.min(x_obstacles, axis=1)
+
     self.params[:,3] = np.copy(self.a_prev)
     self.params[:,4] = t_follow
     self.params[:,5] = LEAD_DANGER_FACTOR
+
+        # =========================
+    # 追車加速抑制 V4
+    #
+    # 距離越近 -> 限制越大
+    # 速差越大 -> 限制越大
+    #
+    # 最終限制 = 距離係數 × 速差係數
+    # =========================
+
+    if lead.status:
+
+      d = float(lead.dRel)
+
+      # 自車與前車速差(km/h)
+      # 小於0代表前車比自己快
+      v_rel_kph = max(
+        (v_ego - lead.vLead) * 3.6,
+        0.0
+      )
+
+      # ---------------------------------
+      # 速差係數
+      #
+      # 0km/h  -> 100%
+      # 2km/h  -> 80%
+      # 5km/h  -> 60%
+      # 10km/h -> 50%
+      # 20km/h -> 40%
+      # ---------------------------------
+      speed_factor = np.interp(
+        v_rel_kph,
+        [0.0, 2.0, 5.0, 10.0, 20.0],
+        [1.0, 0.8, 0.6, 0.5, 0.4]
+      )
+
+      # ---------------------------------
+      # 距離係數
+      #
+      # 80m -> 100%
+      # 60m -> 90%
+      # 40m -> 70%
+      # 25m -> 50%
+      # 15m -> 40%
+      # ---------------------------------
+      distance_factor = np.interp(
+        d,
+        [15.0, 25.0, 40.0, 60.0, 80.0],
+        [0.4, 0.5, 0.7, 0.9, 1.0]
+      )
+
+      # 最終追車抑制倍率
+      reduction = speed_factor * distance_factor
+
+      # 避免加速能力被壓得過低
+      reduction = max(reduction, 0.15)
+
+      # 套用到 MPC 最大加速度
+      self.params[:,1] *= reduction
 
     self.run()
     if (np.any(lead_xv_0[FCW_IDXS,0] - self.x_sol[FCW_IDXS,0] < CRASH_DISTANCE) and
