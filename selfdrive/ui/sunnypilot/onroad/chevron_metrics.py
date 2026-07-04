@@ -16,7 +16,7 @@ from openpilot.system.ui.lib.text_measure import measure_text_cached
 # Chevron Metrics V2 可調參數
 # 修改 FONT_SIZE 即可調整字體大小
 # ==============================
-FONT_SIZE = 50
+FONT_SIZE = 46
 
 
 class ChevronOptions:
@@ -84,9 +84,17 @@ class ChevronMetrics:
       distance_text = f"{val:.0f} {unit}"
       text_lines.append(distance_text)
 
-    # Lead V (Radar 即時前車速度，供 Lead Decel Predictor 調校)
+    # Speed
     if ui_state.chevron_metrics == ChevronOptions.SPEED_ONLY or ui_state.chevron_metrics == ChevronOptions.ALL:
-      text_lines.append(f"{max(0.0, lead_data.vLead):.2f}")
+      multiplier = CV.MS_TO_KPH if ui_state.is_metric else CV.MS_TO_MPH
+      val = max(0.0, (v_rel + v_ego) * multiplier)
+      # Chevron Metrics V2：
+      # All 模式速度顯示 km，其餘模式維持 km/h
+      if ui_state.chevron_metrics == ChevronOptions.ALL:
+        unit = "km" if ui_state.is_metric else "mi"
+      else:
+        unit = "km/h" if ui_state.is_metric else "mph"
+      text_lines.append(f"{val:.0f} {unit}")
 
     # Time to collision
     if ui_state.chevron_metrics == ChevronOptions.TTC_ONLY or ui_state.chevron_metrics == ChevronOptions.ALL:
