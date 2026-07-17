@@ -282,7 +282,7 @@ class ModelState(ModelStateBase):
         raise ValueError('not a straight lane segment')
 
       offset = float(np.mean(offsets))
-      if abs(offset) > 0.15:
+      if abs(offset) > 0.10:
         direction = 1 if offset > 0.0 else -1
         if direction == self.lane_centering_direction:
           self.lane_centering_counter = min(self.lane_centering_counter + 1, 6)
