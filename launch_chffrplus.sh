@@ -5,18 +5,14 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 source "$DIR/launch_env.sh"
 
 function agnos_init {
-  # TODO: move this to agnos
   sudo rm -f /data/etc/NetworkManager/system-connections/*.nmmeta
+  rm -f /data/scons_cache/config.lock
 
-  # set success flag for current boot slot
   sudo abctl --set_success
 
-  # TODO: do this without udev in AGNOS
-  # udev does this, but sometimes we startup faster
   sudo chgrp gpu /dev/adsprpc-smd /dev/ion /dev/kgsl-3d0
   sudo chmod 660 /dev/adsprpc-smd /dev/ion /dev/kgsl-3d0
 
-  # Check if AGNOS update is required
   if [ $(< /VERSION) != "$AGNOS_VERSION" ]; then
     AGNOS_PY="$DIR/system/hardware/tici/agnos.py"
     MANIFEST="$DIR/system/hardware/tici/agnos.json"
@@ -28,93 +24,204 @@ function agnos_init {
 }
 
 set_tici_hw() {
-  if grep -q "tici" /sys/firmware/devicetree/base/model 2>/dev/null; then
-    echo "Querying panda MCU type..."
-    MCU_OUTPUT=$(python -c "from panda_tici import Panda; p = Panda(cli=False); print(p.get_mcu_type()); p.close()" 2>/dev/null)
+  grep -q "tici" /sys/firmware/devicetree/base/model 2>/dev/null || return 0
+  export TICI_HW=1
 
-    if [[ "$MCU_OUTPUT" == *"McuType.F4"* ]]; then
-      echo "TICI (DOS) detected"
-    elif [[ "$MCU_OUTPUT" == *"McuType.H7"* ]]; then
-      echo "TICI (TRES) detected"
-      export TICI_TRES=1
+  local cache="/persist/dp_dev_panda_mcu_type"
+  local attempts=15 confirm=3
+  local mcu="" count=0 last="" cur cached
+
+  # 快取極速通道
+  cached=$(cat "$cache" 2>/dev/null)
+  case "$cached" in
+    F4|H7) mcu="$cached"; echo "panda MCU $mcu [cached]" ;;
+  esac
+
+  # 慢速偵測通道 (快取不存在時執行)
+  if [ -z "$mcu" ]; then
+    echo "Querying panda MCU type..."
+    for attempt in $(seq 1 "$attempts"); do
+      if [ -n "$last" ]; then sleep 1; else sleep 3; fi
+
+      case "$(python -c "from panda_tici import Panda; p = Panda(cli=False); print(p.get_mcu_type()); p.close()" 2>/dev/null)" in
+        *McuType.F4*) cur="F4" ;;
+        *McuType.H7*) cur="H7" ;;
+        *)            cur="" ;;
+      esac
+
+      if [ -n "$cur" ] && [ "$cur" = "$last" ]; then
+        count=$((count + 1))
+      else
+        count=1
+        last="$cur"
+      fi
+
+      if [ -n "$cur" ] && [ "$count" -ge "$confirm" ]; then
+        mcu="$cur"
+        break
+      fi
+    done
+
+    # 優雅降級：成功才寫入快取，失敗則不寫入並繼續放行（不 exit，維持快速開機）
+    if [ -n "$mcu" ]; then
+      if sudo mount -o remount,rw /persist 2>/dev/null; then
+        echo "$mcu" | sudo tee "$cache" >/dev/null 2>&1
+        sudo mount -o remount,ro /persist 2>/dev/null
+      fi
     else
-      echo "TICI (UNKNOWN) detected"
+      echo "WARNING: Panda MCU detection failed after $attempts attempts. TICI_DOS/TICI_TRES not set, proceeding anyway."
     fi
-    export TICI_HW=1
+  fi
+
+  # 硬體變數指派與防禦性掛載
+  if [ "$mcu" = "F4" ]; then
+    mount_nvme
+    export TICI_DOS=1
+    set_aux_panda
+  elif [ "$mcu" = "H7" ]; then
+    export TICI_TRES=1
+  else
+    # 就算 MCU 偵測失敗，依舊嘗試掛載 NVMe，避免 F4 硬體失去錄影空間
+    mount_nvme
+  fi
+}
+
+set_aux_panda() {
+  local mode="/sys/devices/platform/soc/a600000.ssusb/mode"
+  [ -e "$mode" ] || return 0
+
+  echo host | sudo tee "$mode" >/dev/null 2>&1
+  for _ in $(seq 1 6); do
+    sleep 0.5
+    if [ "$(lsusb 2>/dev/null | grep -c 'comma.ai panda')" -ge 2 ]; then
+      return 0
+    fi
+  done
+  echo none | sudo tee "$mode" >/dev/null 2>&1
+}
+
+mount_nvme() {
+  # 0.2秒極速高頻輪詢掛載
+  for i in $(seq 1 50); do
+    [ -b /dev/nvme0n1p1 ] && break
+    sleep 0.2
+  done
+
+  if [ ! -b /dev/nvme0n1p1 ]; then return 0; fi
+  if ! mountpoint -q /data/media/0/realdata; then mount /dev/nvme0n1p1 /data/media/0/realdata; fi
+
+  if mountpoint -q /data/media/0/realdata; then
+    OWNER="$(stat -c '%U' /data/media/0/realdata)"
+    GROUP="$(stat -c '%G' /data/media/0/realdata)"
+    PERM="$(stat -c '%a' /data/media/0/realdata)"
+    if [ "$OWNER" != "comma" ] || [ "$GROUP" != "comma" ]; then chown comma:comma /data/media/0/realdata; fi
+    if [ "$PERM" != "755" ]; then chmod 755 /data/media/0/realdata; fi
   fi
 }
 
 set_lite_hw() {
   if grep -q "tici" /sys/firmware/devicetree/base/model 2>/dev/null; then
     output=$(i2cget -y 0 0x10 0x00 2>/dev/null)
+    if [ -z "$output" ]; then export LITE=1; fi
+  fi
+}
 
-    if [ -z "$output" ]; then
-      echo "Lite HW"
-      export LITE=1
-    fi
+set_model_fingerprint() {
+  local model
+  model=$(cat /data/params/d/dp_dev_model_selected 2>/dev/null)
+  if [ -n "$model" ] && [ "$model" != "0" ]; then
+    export FINGERPRINT="$model"
+    export SKIP_FW_QUERY=1
   fi
 }
 
 function launch {
-  # Remove orphaned git lock if it exists on boot
   [ -f "$DIR/.git/index.lock" ] && rm -f $DIR/.git/index.lock
 
-  # Check to see if there's a valid overlay-based update available. Conditions
-  # are as follows:
+  # Git 智慧更新機制：commit hash 比對 (快) + 本地修改保護 (近乎零成本的 stat 比對)
   #
-  # 1. The DIR init file has to exist, with a newer modtime than anything in
-  #    the DIR Git repo. This checks for local development work or the user
-  #    switching branches/forks, which should not be overwritten.
-  # 2. The FINALIZED consistent file has to exist, indicating there's an update
-  #    that completed successfully and synced to disk.
+  # LOCAL_MODIFIED 檢查沿用原生機制：只要 .git 底下有任何檔案比 .overlay_init 新，
+  # 就代表使用者在本地做了修改（不論是否已 commit），此時一律跳過覆蓋更新，
+  # 避免自動更新把還在寫的東西沖掉。這個檢查只是一次 find+grep，幾乎不花時間，
+  # 不會拖慢開機。
+  if [ ! -f "/data/.skip_overlay_check" ]; then
+    LOCAL_MODIFIED=0
+    if [ -f "${DIR}/.overlay_init" ]; then
+      find ${DIR}/.git -newer ${DIR}/.overlay_init 2>/dev/null | grep -q '.' && LOCAL_MODIFIED=1
+    fi
 
-  if [ -f "${DIR}/.overlay_init" ]; then
-    find ${DIR}/.git -newer ${DIR}/.overlay_init | grep -q '.' 2> /dev/null
-    if [ $? -eq 0 ]; then
-      echo "${DIR} has been modified, skipping overlay update installation"
+    if [ "$LOCAL_MODIFIED" -eq 1 ]; then
+      echo "${DIR} 有本地修改（含未 commit），跳過覆蓋更新"
     else
-      if [ -f "${STAGING_ROOT}/finalized/.overlay_consistent" ]; then
-        if [ ! -d /data/safe_staging/old_openpilot ]; then
-          echo "Valid overlay update found, installing"
-          LAUNCHER_LOCATION="${BASH_SOURCE[0]}"
+      LOCAL_COMMIT=$(git -C "$DIR" rev-parse HEAD 2>/dev/null)
+      STAGING_COMMIT=$(git -C "${STAGING_ROOT}/finalized" rev-parse HEAD 2>/dev/null)
 
-          mv $DIR /data/safe_staging/old_openpilot
-          mv "${STAGING_ROOT}/finalized" $DIR
-          cd $DIR
-
-          echo "Restarting launch script ${LAUNCHER_LOCATION}"
-          unset AGNOS_VERSION
-          exec "${LAUNCHER_LOCATION}"
-        else
-          echo "openpilot backup found, not updating"
-          # TODO: restore backup? This means the updater didn't start after swapping
+      if [ -n "$STAGING_COMMIT" ] && [ "$LOCAL_COMMIT" != "$STAGING_COMMIT" ]; then
+        if [ -f "${STAGING_ROOT}/finalized/.overlay_consistent" ]; then
+          if [ ! -d /data/safe_staging/old_openpilot ]; then
+            echo "偵測到遠端新版本 ($STAGING_COMMIT)，執行更新替換..."
+            LAUNCHER_LOCATION="${BASH_SOURCE[0]}"
+            mv $DIR /data/safe_staging/old_openpilot
+            mv "${STAGING_ROOT}/finalized" $DIR
+            cd $DIR
+            unset AGNOS_VERSION
+            exec "${LAUNCHER_LOCATION}"
+          fi
         fi
       fi
     fi
   fi
 
-  # handle pythonpath
   ln -sfn $(pwd) /data/pythonpath
   export PYTHONPATH="$PWD"
 
-  # hardware specific init
   if [ -f /AGNOS ]; then
     set_tici_hw
     set_lite_hw
     agnos_init
+    set_model_fingerprint
   fi
 
-  # write tmux scrollback to a file
   tmux capture-pane -pq -S-1000 > /tmp/launch_log
 
-  # start manager
   cd system/manager
-  if [ ! -f $DIR/prebuilt ]; then
-    ./build.py
+
+  # Git 智慧免編譯機制：commit hash 比對 (快) + working tree dirty 檢查 (近乎零成本)
+  #
+  # 只比對 commit hash 會漏掉「還沒 commit 就重開機測試」的情況（開發時常態）。
+  # `git status --porcelain` 是單一指令、只掃差異，通常是毫秒等級，遠比 build.py
+  # 本身快上百倍，加這個才能保證「你剛改的程式碼」一定會被編到，同時不變動未修改
+  # 版本的快速跳過路徑。非 git 環境（純 prebuilt image）則退回原生 prebuilt flag，
+  # 不會每次強制全編。
+  CURRENT_COMMIT=$(git -C "$DIR" rev-parse HEAD 2>/dev/null)
+
+  if [ -z "$CURRENT_COMMIT" ]; then
+    if [ ! -f $DIR/prebuilt ]; then
+      ./build.py
+    fi
+  else
+    DIRTY=$(git -C "$DIR" status --porcelain --untracked-files=normal 2>/dev/null)
+    CACHED_COMMIT=$(cat /data/.build_commit_cache 2>/dev/null)
+
+    if [ -z "$DIRTY" ] && [ "$CURRENT_COMMIT" = "$CACHED_COMMIT" ]; then
+      echo "Git 版本未變更且無未提交修改，安全跳過編譯階段"
+    else
+      echo "偵測到程式碼變更（commit 或未提交修改），開始編譯..."
+      ./build.py
+      if [ $? -eq 0 ]; then
+        # 只在乾淨狀態下寫入快取；有 dirty 改動時故意不寫，
+        # 確保下次開機（不論改動有沒有 commit）都會重新判斷。
+        if [ -z "$DIRTY" ]; then
+          echo "$CURRENT_COMMIT" > /data/.build_commit_cache
+        else
+          rm -f /data/.build_commit_cache
+        fi
+      fi
+    fi
   fi
+
   ./manager.py
 
-  # if broken, keep on screen error
   while true; do sleep 1; done
 }
 
