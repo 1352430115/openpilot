@@ -92,13 +92,22 @@ def main() -> None:
       # FIX 3: 用智慧型重試邏輯取代每次固定 reset/recover
       #         只有在確認找不到 panda 時才做 reset/recover
       if no_internal_panda_count > 0:
-        if no_internal_panda_count == 3:
-          cloudlog.info("No pandas found, putting internal panda into DFU")
-          HARDWARE.recover_internal_panda()
-        else:
-          cloudlog.info("No pandas found, resetting internal panda")
-          HARDWARE.reset_internal_panda()
-        time.sleep(3)  # wait to come back up
+        cloudlog.info("No pandas found, resetting internal panda")
+        HARDWARE.reset_internal_panda()
+
+        # Wait for the internal panda to boot its application before
+        # deciding whether recovery or reflashing is necessary.
+        panda_serials: list[str] = []
+        for _ in range(16):
+          panda_serials = Panda.list()
+          if len(panda_serials) == 1:
+            try:
+              with Panda(panda_serials[0]) as p:
+                if not p.bootstub:
+                  break
+            except Exception:
+              pass
+          time.sleep(0.5)
 
       # Flash all Pandas in DFU mode
       dfu_serials = PandaDFU.list()
