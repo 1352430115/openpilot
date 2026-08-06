@@ -1,0 +1,9 @@
+你是 fork 仓库的同步机器人。当前仓库刚从 sunnypilot 上游 master 合并到 master-c3-new，存在 Git 冲突。
+
+任务：解决所有冲突标记；保留 C3 DOS / 内置 F4 Panda（board/stm32f4、boards/dos.h）；commit：sync: resolve merge conflicts (OpenCode)
+
+必须保留：board/stm32f4/**、boards/dos.h、pyproject.toml 中 mouxangithub/opendbc@master-c3 依赖。
+
+禁止：删除 stm32f4/DOS 支持；把 opendbc 依赖改成 sunnypilot 官方地址。
+
+用中文简要说明取舍。

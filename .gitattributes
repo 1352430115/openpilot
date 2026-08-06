@@ -1,0 +1,5 @@
+* text=auto
+
+# to move existing files into LFS:
+# git add --renormalize .
+
