@@ -56,8 +56,12 @@ T_DIFFS = np.diff(T_IDXS, prepend=[0.])
 COMFORT_BRAKE = 2.5
 STOP_DISTANCE = 6.0
 CRUISE_MIN_ACCEL = -1.2
-CRUISE_MAX_ACCEL = 1.6
+CRUISE_MAX_ACCEL = 1.2
 MIN_X_LEAD_FACTOR = 0.5
+
+# Lead-start hold: retain a stopped lead for 0.5 s after radar first sees it move.
+START_DELAY_FRAMES = 10
+START_RADAR_SPEED = 0.5
 
 def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
   if personality==log.LongitudinalPersonality.relaxed:
@@ -65,18 +69,18 @@ def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
   elif personality==log.LongitudinalPersonality.standard:
     return 1.0
   elif personality==log.LongitudinalPersonality.aggressive:
-    return 0.5
+    return 0.8
   else:
     raise NotImplementedError("Longitudinal personality not supported")
 
 
-def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard):
+def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, v_ego=0.0):
   if personality==log.LongitudinalPersonality.relaxed:
-    return 1.75
+    return 1.55
   elif personality==log.LongitudinalPersonality.standard:
-    return 1.45
-  elif personality==log.LongitudinalPersonality.aggressive:
     return 1.25
+  elif personality==log.LongitudinalPersonality.aggressive:
+    return np.interp(v_ego * 3.6, [0.0, 35.0, 70.0], [1.05, 0.95, 0.85])
   else:
     raise NotImplementedError("Longitudinal personality not supported")
 
@@ -245,6 +249,8 @@ class LongitudinalMpc:
     # timers
     self.solve_time = 0.0
     self.x0 = np.zeros(X_DIM)
+    self.lead_v_history = []
+    self.lead_start_counters = [0, 0]
     self.set_weights()
 
   def set_cost_weights(self, cost_weights, constraint_cost_weights):
@@ -286,7 +292,7 @@ class LongitudinalMpc:
     lead_xv = np.column_stack((x_lead_traj, v_lead_traj))
     return lead_xv
 
-  def process_lead(self, lead):
+  def process_lead(self, lead, lead_index):
     v_ego = self.x0[1]
     if lead is not None and lead.present:
       x_lead = lead.dRel
@@ -307,20 +313,39 @@ class LongitudinalMpc:
     v_lead = np.clip(v_lead, 0.0, 1e8)
     a_lead = np.clip(a_lead, -10., 5.)
     lead_xv = self.extrapolate_lead(x_lead, v_lead, a_lead, a_lead_tau)
+
+    # The old implementation also required a model-motion confirmation. This
+    # version has only radar inputs, so retain the lead for the same short delay
+    # after radar first reports movement to prevent a premature start.
+    stopped_lead = lead is not None and lead.present and lead.dRel < 12.0 and v_ego < 2.0
+    if stopped_lead:
+      if lead.vLead > START_RADAR_SPEED:
+        self.lead_start_counters[lead_index] += 1
+      else:
+        self.lead_start_counters[lead_index] = 0
+
+      if self.lead_start_counters[lead_index] < START_DELAY_FRAMES:
+        lead_xv[:, 0] = x_lead
+        lead_xv[:, 1] = v_lead
+    else:
+      self.lead_start_counters[lead_index] = 0
+
     return lead_xv
 
   def update(self, radarstate, v_cruise, personality=log.LongitudinalPersonality.standard):
-    t_follow = get_T_FOLLOW(personality)
     v_ego = self.x0[1]
+    t_follow = get_T_FOLLOW(personality, v_ego)
 
-    lead_xv_0 = self.process_lead(radarstate.leadOne)
-    lead_xv_1 = self.process_lead(radarstate.leadTwo)
+    lead_xv_0 = self.process_lead(radarstate.leadOne, 0)
+    lead_xv_1 = self.process_lead(radarstate.leadTwo, 1)
 
     # To estimate a safe distance from a moving lead, we calculate how much stopping
     # distance that lead needs as a minimum. We can add that to the current distance
     # and then treat that as a stopped car/obstacle at this new distance.
-    lead_0_obstacle = lead_xv_0[:,0] + get_stopped_equivalence_factor(lead_xv_0[:,1])
-    lead_1_obstacle = lead_xv_1[:,0] + get_stopped_equivalence_factor(lead_xv_1[:,1])
+    lead_stop_offset_0 = np.where(lead_xv_0[:, 1] < 1.0, 1.0, 0.0)
+    lead_stop_offset_1 = np.where(lead_xv_1[:, 1] < 1.0, 1.0, 0.0)
+    lead_0_obstacle = lead_xv_0[:,0] + get_stopped_equivalence_factor(lead_xv_0[:,1]) - lead_stop_offset_0
+    lead_1_obstacle = lead_xv_1[:,0] + get_stopped_equivalence_factor(lead_xv_1[:,1]) - lead_stop_offset_1
 
     # Fake an obstacle for cruise, this ensures smooth acceleration to set speed
     # when the leads are no factor.
@@ -329,6 +354,30 @@ class LongitudinalMpc:
     v_upper = v_ego + (T_IDXS * CRUISE_MAX_ACCEL * 1.05)
     v_cruise_clipped = np.clip(v_cruise * np.ones(N+1), v_lower, v_upper)
     cruise_obstacle = np.cumsum(T_DIFFS * v_cruise_clipped) + get_safe_obstacle_distance(v_cruise_clipped, t_follow)
+
+    # Adapt the lead obstacle when a closing or steadily decelerating lead is
+    # detected. The distance scaling preserves the milder near-lead behavior
+    # from the old tuning while braking earlier for distant leads.
+    lead = radarstate.leadOne
+    if lead.present:
+      self.lead_v_history.append(float(lead.vLead))
+      if len(self.lead_v_history) > 4:
+        self.lead_v_history.pop(0)
+    else:
+      self.lead_v_history.clear()
+
+    if lead.present and len(self.lead_v_history) == 4:
+      min_decel = 0.0 if lead.dRel <= 40.0 else np.interp(lead.dRel, [40.0, 60.0, 90.0, 120.0], [0.00, 0.05, 0.12, 0.20])
+      decel_count = sum((self.lead_v_history[i] - self.lead_v_history[i + 1]) > min_decel for i in range(3))
+      lead_total_decel = self.lead_v_history[0] - self.lead_v_history[-1] if decel_count >= 2 and lead.vLead < v_ego else 0.0
+      closing_kph = max((v_ego - lead.vLead) * 3.6, 0.0)
+      closing_total_decel = np.interp(closing_kph, [0.0, 10.0, 20.0, 30.0], [0.0, 0.2, 0.6, 1.2])
+      total_decel = max(lead_total_decel, closing_total_decel)
+
+      if total_decel >= 0.2:
+        base_offset = np.interp(total_decel, [0.2, 0.6, 1.2], [1.0, 2.0, 3.0])
+        distance_scale = np.interp(lead.dRel, [10.0, 15.0, 20.0, 30.0, 40.0, 55.0, 70.0, 90.0, 120.0], [0.2, 0.5, 0.8, 1.0, 1.2, 1.5, 2.0, 3.0, 4.0])
+        lead_0_obstacle -= base_offset * distance_scale
 
     x_obstacles = np.column_stack([lead_0_obstacle, lead_1_obstacle, cruise_obstacle])
     self.source = MPC_SOURCES[np.argmin(x_obstacles[0])]
@@ -344,6 +393,14 @@ class LongitudinalMpc:
     self.params[:,3] = np.copy(self.a_prev)
     self.params[:,4] = t_follow
     self.params[:,5] = LEAD_DANGER_FACTOR
+
+    # Reduce available acceleration while closing on a lead. This is the old
+    # distance- and relative-speed-based catch-up suppression, adapted to the
+    # radar lead interface used by this version.
+    if lead.present and (v_ego - lead.vLead) * 3.6 > 1.0:
+      speed_factor = np.interp((v_ego - lead.vLead) * 3.6, [0.0, 2.0, 5.0, 10.0, 20.0], [1.0, 0.8, 0.6, 0.5, 0.4])
+      distance_factor = np.interp(lead.dRel, [15.0, 25.0, 40.0, 60.0, 80.0], [0.4, 0.5, 0.7, 0.9, 1.0])
+      self.params[:,1] *= max(speed_factor * distance_factor, 0.15)
 
     self.run()
     if (np.any(lead_xv_0[FCW_IDXS,0] - self.x_sol[FCW_IDXS,0] < CRASH_DISTANCE) and
