@@ -1,4 +1,3 @@
-
 """
 Copyright (c) 2021-, Haibin Wen, sunnypilot, and a number of other contributors.
 
@@ -116,50 +115,24 @@ class RelSpeedElement(LeadInfoElement):
 class CpuTempElement:
   def __init__(self):
     self.unit = "°C"
-
   @staticmethod
   def _get_cpu_temperatures():
-    temperatures = []
-
-    for thermal_zone in __import__("glob").glob("/sys/class/thermal/thermal_zone*/temp"):
+    import glob
+    temps = []
+    for p in glob.glob("/sys/class/thermal/thermal_zone*/temp"):
       try:
-        zone_dir = __import__("os").path.dirname(thermal_zone)
-        zone_type_path = __import__("os").path.join(zone_dir, "type")
-
-        with open(zone_type_path, "r") as f:
-          zone_type = f.read().strip().lower()
-
-        # Only use actual CPU user-temperature zones on C3.
-        # Ignore -step and -lowf thermal-management zones.
-        if not (zone_type.startswith("cpu") and zone_type.endswith("-usr")):
-          continue
-
-        with open(thermal_zone, "r") as f:
-          temp = int(f.read().strip()) / 1000.0
-
-        if -20.0 < temp < 150.0:
-          temperatures.append(temp)
+        zone_type = open(p.replace("/temp", "/type")).read().strip().lower()
+        if zone_type.startswith("cpu") and zone_type.endswith("-usr"):
+          temps.append(int(open(p).read()) / 1000.0)
       except (OSError, ValueError):
-        continue
-
-    return temperatures
+        pass
+    return temps
 
   def update(self, sm, is_metric: bool) -> UiElement:
-    temperatures = self._get_cpu_temperatures()
-
-    if not temperatures:
-      return UiElement("-", tr("CPU TEMP"), self.unit, rl.WHITE)
-
-    max_temp = max(temperatures)
-    value = f"{max_temp:.0f}"
-
-    if max_temp >= 80.0:
-      color = rl.RED
-    elif max_temp >= 70.0:
-      color = rl.Color(255, 188, 0, 255)  # Orange
-    else:
-      color = rl.Color(0, 255, 0, 255)  # Green
-
+    temps = self._get_cpu_temperatures()
+    max_temp = max(temps, default=-1)
+    value = f"{max_temp:.0f}" if max_temp >= 0 else "-"
+    color = rl.RED if max_temp >= 80 else rl.Color(255, 188, 0, 255) if max_temp >= 70 else rl.WHITE
     return UiElement(value, tr("CPU TEMP"), self.unit, color)
 
 
@@ -269,3 +242,132 @@ class DesiredSteeringPIDElement(LateralControlElement):
 
 class AEgoElement:
   def __init__(self):
+    self.unit = tr("m/s^2")
+
+  def update(self, sm, is_metric: bool) -> UiElement:
+    a_ego = sm['carState'].aEgo
+    value = f"{a_ego:.1f}"
+    return UiElement(value, tr("ACC."), self.unit, rl.WHITE)
+
+
+class LeadSpeedElement(LeadInfoElement):
+  def __init__(self):
+    self.unit = tr("km/h")
+
+  def update(self, sm, is_metric: bool) -> UiElement:
+    lead_status, _, lead_v_rel = self.get_lead_status(sm)
+    v_ego = sm['carState'].vEgo
+
+    self.unit = tr("km/h") if is_metric else tr("mph")
+
+    conversion = CV.MS_TO_KPH if is_metric else CV.MS_TO_MPH
+    value = f"{(lead_v_rel + v_ego) * conversion:.0f}" if lead_status else "-"
+    color = self.get_lead_color(0, lead_v_rel, use_v_rel=True) if lead_status else rl.WHITE
+
+    return UiElement(value, tr("L.S."), self.unit, color)
+
+
+class FrictionCoefficientElement:
+  def __init__(self):
+    self.unit = ""
+
+  def update(self, sm, is_metric: bool) -> UiElement:
+    if ui_state.enforce_torque_control and ui_state.custom_torque_params and ui_state.torque_override_enabled:
+      return UiElement(f"{ui_state.torque_override_friction:.3f}", tr("FRIC."), self.unit, rl.WHITE)
+
+    ltp = sm['liveTorqueParameters']
+    value = f"{ltp.frictionCoefficientFiltered:.3f}"
+    color = rl.Color(0, 255, 0, 255) if ltp.liveValid else rl.WHITE
+    return UiElement(value, tr("FRIC."), self.unit, color)
+
+
+class LatAccelFactorElement:
+  def __init__(self):
+    self.unit = ""
+
+  def update(self, sm, is_metric: bool) -> UiElement:
+    if ui_state.enforce_torque_control and ui_state.custom_torque_params and ui_state.torque_override_enabled:
+      return UiElement(f"{ui_state.torque_override_lat_accel_factor:.3f}", tr("L.A.F."), self.unit, rl.WHITE)
+
+    ltp = sm['liveTorqueParameters']
+    value = f"{ltp.latAccelFactorFiltered:.3f}"
+    color = rl.Color(0, 255, 0, 255) if ltp.liveValid else rl.WHITE
+    return UiElement(value, tr("L.A.F."), self.unit, color)
+
+
+class SteeringTorqueEpsElement:
+  def __init__(self):
+    self.unit = tr("N·dm")
+
+  def update(self, sm, is_metric: bool) -> UiElement:
+    steering_torque_eps = sm['carState'].steeringTorqueEps
+    value = f"{abs(steering_torque_eps):.1f}"
+    return UiElement(value, tr("E.T."), self.unit, rl.WHITE)
+
+
+class GpsInfoElement:
+  @staticmethod
+  def get_gps_data(sm):
+    if sm.valid['gpsLocationExternal']:
+      return sm['gpsLocationExternal'], True
+    elif sm.valid['gpsLocation']:
+      return sm['gpsLocation'], True
+    return None, False
+
+
+class BearingDegElement(GpsInfoElement):
+  def __init__(self):
+    self.unit = ""
+
+  def update(self, sm, is_metric: bool) -> UiElement:
+    gps_data, valid = self.get_gps_data(sm)
+    if not valid:
+      return UiElement(f"{tr('OFF')} | -", tr("B.D."), self.unit, rl.WHITE)
+
+    bearing_accuracy_deg = gps_data.bearingAccuracyDeg
+    bearing_deg = gps_data.bearingDeg
+
+    if bearing_accuracy_deg != 180.0:
+      value = f"{bearing_deg:.0f}°"
+      if (337.5 <= bearing_deg <= 360) or (0 <= bearing_deg <= 22.5):
+        dir_value = tr("N")
+      elif 22.5 < bearing_deg < 67.5:
+        dir_value = tr("NE")
+      elif 67.5 <= bearing_deg <= 112.5:
+        dir_value = tr("E")
+      elif 112.5 < bearing_deg < 157.5:
+        dir_value = tr("SE")
+      elif 157.5 <= bearing_deg <= 202.5:
+        dir_value = tr("S")
+      elif 202.5 < bearing_deg < 247.5:
+        dir_value = tr("SW")
+      elif 247.5 <= bearing_deg <= 292.5:
+        dir_value = tr("W")
+      else:  # 292.5 < bearing_deg < 337.5
+        dir_value = tr("NW")
+    else:
+      value = "-"
+      dir_value = tr("OFF")
+
+    return UiElement(f"{dir_value} | {value}", tr("B.D."), self.unit, rl.WHITE)
+
+
+class AltitudeElement(GpsInfoElement):
+  def __init__(self):
+    self.unit = tr("m")
+
+  def update(self, sm, is_metric: bool) -> UiElement:
+    gps_data, valid = self.get_gps_data(sm)
+
+    gps_accuracy = 0.0
+    altitude = 0.0
+
+    if valid:
+      altitude = gps_data.altitude
+      if sm.valid['gpsLocationExternal']:
+        gps_accuracy = gps_data.horizontalAccuracy
+      else:
+        gps_accuracy = 1.0  # Simulate valid for legacy check
+
+    value = f"{altitude:.1f}" if gps_accuracy != 0.0 else "-"
+    return UiElement(value, tr("ALT."), self.unit, rl.WHITE)
