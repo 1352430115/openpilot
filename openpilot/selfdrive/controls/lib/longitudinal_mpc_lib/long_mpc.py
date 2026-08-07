@@ -59,10 +59,6 @@ CRUISE_MIN_ACCEL = -1.2
 CRUISE_MAX_ACCEL = 1.2
 MIN_X_LEAD_FACTOR = 0.5
 
-# Lead-start hold: retain a stopped lead for 0.5 s after radar first sees it move.
-START_DELAY_FRAMES = 10
-START_RADAR_SPEED = 0.5
-
 def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
   if personality==log.LongitudinalPersonality.relaxed:
     return 1.0
@@ -250,7 +246,6 @@ class LongitudinalMpc:
     self.solve_time = 0.0
     self.x0 = np.zeros(X_DIM)
     self.lead_v_history = []
-    self.lead_start_counters = [0, 0]
     self.set_weights()
 
   def set_cost_weights(self, cost_weights, constraint_cost_weights):
@@ -292,7 +287,7 @@ class LongitudinalMpc:
     lead_xv = np.column_stack((x_lead_traj, v_lead_traj))
     return lead_xv
 
-  def process_lead(self, lead, lead_index):
+  def process_lead(self, lead):
     v_ego = self.x0[1]
     if lead is not None and lead.present:
       x_lead = lead.dRel
@@ -314,38 +309,20 @@ class LongitudinalMpc:
     a_lead = np.clip(a_lead, -10., 5.)
     lead_xv = self.extrapolate_lead(x_lead, v_lead, a_lead, a_lead_tau)
 
-    # The old implementation also required a model-motion confirmation. This
-    # version has only radar inputs, so retain the lead for the same short delay
-    # after radar first reports movement to prevent a premature start.
-    stopped_lead = lead is not None and lead.present and lead.dRel < 12.0 and v_ego < 2.0
-    if stopped_lead:
-      if lead.vLead > START_RADAR_SPEED:
-        self.lead_start_counters[lead_index] += 1
-      else:
-        self.lead_start_counters[lead_index] = 0
-
-      if self.lead_start_counters[lead_index] < START_DELAY_FRAMES:
-        lead_xv[:, 0] = x_lead
-        lead_xv[:, 1] = v_lead
-    else:
-      self.lead_start_counters[lead_index] = 0
-
     return lead_xv
 
   def update(self, radarstate, v_cruise, personality=log.LongitudinalPersonality.standard):
     v_ego = self.x0[1]
     t_follow = get_T_FOLLOW(personality, v_ego)
 
-    lead_xv_0 = self.process_lead(radarstate.leadOne, 0)
-    lead_xv_1 = self.process_lead(radarstate.leadTwo, 1)
+    lead_xv_0 = self.process_lead(radarstate.leadOne)
+    lead_xv_1 = self.process_lead(radarstate.leadTwo)
 
     # To estimate a safe distance from a moving lead, we calculate how much stopping
     # distance that lead needs as a minimum. We can add that to the current distance
     # and then treat that as a stopped car/obstacle at this new distance.
-    lead_stop_offset_0 = np.where(lead_xv_0[:, 1] < 1.0, 1.0, 0.0)
-    lead_stop_offset_1 = np.where(lead_xv_1[:, 1] < 1.0, 1.0, 0.0)
-    lead_0_obstacle = lead_xv_0[:,0] + get_stopped_equivalence_factor(lead_xv_0[:,1]) - lead_stop_offset_0
-    lead_1_obstacle = lead_xv_1[:,0] + get_stopped_equivalence_factor(lead_xv_1[:,1]) - lead_stop_offset_1
+    lead_0_obstacle = lead_xv_0[:,0] + get_stopped_equivalence_factor(lead_xv_0[:,1])
+    lead_1_obstacle = lead_xv_1[:,0] + get_stopped_equivalence_factor(lead_xv_1[:,1])
 
     # Fake an obstacle for cruise, this ensures smooth acceleration to set speed
     # when the leads are no factor.
