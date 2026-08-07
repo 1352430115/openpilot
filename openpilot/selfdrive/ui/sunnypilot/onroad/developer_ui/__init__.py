@@ -1,3 +1,4 @@
+
 """
 Copyright (c) 2021-, Haibin Wen, sunnypilot, and a number of other contributors.
 
@@ -9,7 +10,7 @@ from enum import IntEnum
 import pyray as rl
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.selfdrive.ui.sunnypilot.onroad.developer_ui.elements import (
-  UiElement, RelDistElement, RelSpeedElement, SteeringAngleElement,
+  UiElement, RelDistElement, RelSpeedElement, CpuTempElement,
   DesiredLateralAccelElement, ActualLateralAccelElement, DesiredSteeringAngleElement,
   AEgoElement, LeadSpeedElement, FrictionCoefficientElement, LatAccelFactorElement,
   SteeringTorqueEpsElement, BearingDegElement, AltitudeElement, DesiredSteeringPIDElement
@@ -41,7 +42,7 @@ class DeveloperUiRenderer(Widget):
 
     self.rel_dist_elem = RelDistElement()
     self.rel_speed_elem = RelSpeedElement()
-    self.steering_angle_elem = SteeringAngleElement()
+    self.cpu_temp_elem = CpuTempElement()
     self.desired_lat_accel_elem = DesiredLateralAccelElement()
     self.actual_lat_accel_elem = ActualLateralAccelElement()
     self.desired_steer_elem = DesiredSteeringAngleElement()
@@ -85,7 +86,7 @@ class DeveloperUiRenderer(Widget):
     elements = [
       self.rel_dist_elem.update(sm, ui_state.is_metric),
       self.rel_speed_elem.update(sm, ui_state.is_metric),
-      self.steering_angle_elem.update(sm, ui_state.is_metric),
+      self.cpu_temp_elem.update(sm, ui_state.is_metric),
     ]
     if controls_state.lateralControlState.which() == 'torqueState':
       elements.append(self.desired_lat_accel_elem.update(sm, ui_state.is_metric))
@@ -178,15 +179,3 @@ class DeveloperUiRenderer(Widget):
     for i, element in enumerate(elements):
       element_center_x = int(current_x + element_widths[i] / 2)
       self._draw_bottom_dev_ui_element(element_center_x, center_y, element)
-      current_x += element_widths[i] + gap_width
-
-  def _draw_bottom_dev_ui_element(self, center_x: int, y: int, element: UiElement) -> None:
-    font_size = 38
-    start_x = center_x - element.total_width / 2
-
-    rl.draw_text_ex(self._font_bold, element.label_text, rl.Vector2(start_x, y - font_size // 2), font_size, 0, rl.WHITE)
-    rl.draw_text_ex(self._font_bold, element.val_text, rl.Vector2(start_x + element.label_width, y - font_size // 2), font_size, 0, element.color)
-
-    if element.unit:
-      rl.draw_text_ex(self._font_bold, element.unit_text, rl.Vector2(start_x + element.label_width + element.val_width, y - font_size // 2),
-                      font_size, 0, rl.WHITE)
