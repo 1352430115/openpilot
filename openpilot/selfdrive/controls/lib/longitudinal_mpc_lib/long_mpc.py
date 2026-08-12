@@ -54,7 +54,7 @@ T_IDXS = np.array(T_IDXS_LST)
 FCW_IDXS = T_IDXS < 5.0
 T_DIFFS = np.diff(T_IDXS, prepend=[0.])
 COMFORT_BRAKE = 2.5
-STOP_DISTANCE = 4.0
+STOP_DISTANCE = 6.0
 CRUISE_MIN_ACCEL = -1.2
 CRUISE_MAX_ACCEL = 1.2
 MIN_X_LEAD_FACTOR = 0.5
@@ -315,52 +315,6 @@ class LongitudinalMpc:
     v_ego = self.x0[1]
     t_follow = get_T_FOLLOW(personality, v_ego)
 
-    lead = radarstate.leadOne
-
-    # ============================================================
-    # 共用：前車減速偵測 (供 T_FOLLOW Boost 與 Lead Decel Predictor 共用)
-    #
-    # LEAD_HISTORY_SIZE: 歷史速度幀數
-    # LEAD_DECEL_COUNT: 最近幾幀內至少要下降幾次才算「持續減速」
-    # LEAD_MIN_DECEL: 40m 外 radar 噪聲補償，避免遠距離誤判
-    # ============================================================
-    LEAD_HISTORY_SIZE = 4
-    LEAD_DECEL_COUNT = 2
-    LEAD_MIN_DECEL_BP = [40.0, 60.0, 90.0, 120.0]
-    LEAD_MIN_DECEL = [0.00, 0.05, 0.12, 0.20]
-
-    if lead.present:
-      self.lead_v_history.append(float(lead.vLead))
-      if len(self.lead_v_history) > LEAD_HISTORY_SIZE:
-        self.lead_v_history.pop(0)
-    else:
-      self.lead_v_history.clear()
-
-    lead_decelerating = False
-    if lead.present and len(self.lead_v_history) == LEAD_HISTORY_SIZE:
-      near_lead = lead.dRel <= 40.0
-      min_decel = 0.0 if near_lead else np.interp(lead.dRel, LEAD_MIN_DECEL_BP, LEAD_MIN_DECEL)
-      decel_count = sum(
-        (self.lead_v_history[i] - self.lead_v_history[i + 1]) > min_decel
-        for i in range(LEAD_HISTORY_SIZE - 1)
-      )
-      lead_decelerating = decel_count >= LEAD_DECEL_COUNT and lead.vLead < v_ego
-
-    # ============================================================
-    # Closing-Speed T_FOLLOW Boost (方案 A, 與減速偵測掛勾)
-    #
-    # 前車確實在減速時：用敏感門檻(2/5/10km/h)提早大力放大 t_follow
-    # 前車沒有減速，只是自己速度比較快：維持原本不敏感門檻(10/20/30km/h)，
-    #   避免正常巡航時速差正常波動就常態性拉遠跟車距離
-    # ============================================================
-    if lead.present:
-      closing_kph = max((v_ego - lead.vLead) * 3.6, 0.0)
-      if lead_decelerating:
-        t_follow_boost = np.interp(closing_kph, [0.0, 2.0, 5.0, 10.0], [0.0, 0.15, 0.35, 0.6])
-      else:
-        t_follow_boost = np.interp(closing_kph, [0.0, 10.0, 20.0, 30.0], [0.0, 0.15, 0.35, 0.6])
-      t_follow = t_follow + t_follow_boost
-
     lead_xv_0 = self.process_lead(radarstate.leadOne)
     lead_xv_1 = self.process_lead(radarstate.leadTwo)
 
@@ -374,7 +328,7 @@ class LongitudinalMpc:
     # Lead Decel Predictor Adaptive V1
     #
     # 功能：
-    # 1. 沿用上方共用的減速偵測結果 (lead_decelerating)
+    # 1. 最近4幀偵測前車是否持續減速
     # 2. 近距離降低介入，避免停紅燈重煞
     # 3. 中距離維持 V3 效果
     # 4. 遠距離逐步放大 Offset，提早建立減速度
@@ -384,6 +338,10 @@ class LongitudinalMpc:
     # 2. LEAD_OFFSET_BP
     # 3. LEAD_MIN_DECEL
     # ============================================================
+    lead = radarstate.leadOne
+
+    LEAD_HISTORY_SIZE = 4          # 歷史速度幀數
+    LEAD_DECEL_COUNT = 2           # 至少下降幾次才觸發
 
     # 前車減速量 -> 基礎 Offset(m)
     LEAD_DECEL_BP = [0.2, 0.6, 1.2]
@@ -393,10 +351,34 @@ class LongitudinalMpc:
     LEAD_DISTANCE_BP = [10.0, 15.0, 20.0, 30.0, 40.0, 55.0, 70.0, 90.0, 120.0]
     LEAD_DISTANCE_SCALE = [0.2, 0.5, 0.8, 1.0, 1.2, 1.5, 2.0, 3.0, 4.0]
 
+    # 40m 外 Radar 誤差補償
+    LEAD_MIN_DECEL_BP = [40.0, 60.0, 90.0, 120.0]
+    LEAD_MIN_DECEL = [0.00, 0.05, 0.12, 0.20]
+
+    if lead.present:
+      self.lead_v_history.append(float(lead.vLead))
+      if len(self.lead_v_history) > LEAD_HISTORY_SIZE:
+        self.lead_v_history.pop(0)
+    else:
+      self.lead_v_history.clear()
+
     if lead.present and len(self.lead_v_history) == LEAD_HISTORY_SIZE:
 
+      near_lead = lead.dRel <= 40.0
+
+      min_decel = 0.0 if near_lead else np.interp(
+        lead.dRel,
+        LEAD_MIN_DECEL_BP,
+        LEAD_MIN_DECEL
+      )
+
+      decel_count = sum(
+        (self.lead_v_history[i] - self.lead_v_history[i + 1]) > min_decel
+        for i in range(LEAD_HISTORY_SIZE - 1)
+      )
+
       lead_total_decel = 0.0
-      if lead_decelerating:
+      if decel_count >= LEAD_DECEL_COUNT and lead.vLead < v_ego:
         lead_total_decel = self.lead_v_history[0] - self.lead_v_history[-1]
 
       closing_kph = max((v_ego - lead.vLead) * 3.6, 0.0)
