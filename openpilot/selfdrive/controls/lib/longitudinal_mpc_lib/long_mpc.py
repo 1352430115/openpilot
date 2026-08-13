@@ -349,7 +349,7 @@ class LongitudinalMpc:
 
     # Adaptive Offset 距離倍率
     LEAD_DISTANCE_BP = [10.0, 15.0, 20.0, 30.0, 40.0, 55.0, 70.0, 90.0, 120.0]
-    LEAD_DISTANCE_SCALE = [0.2, 0.5, 0.8, 1.0, 1.2, 1.5, 2.0, 3.0, 4.0]
+    LEAD_DISTANCE_SCALE = [0.0, 0.2, 0.6, 1.0, 1.2, 1.5, 2.0, 3.0, 4.0]
 
     # 40m 外 Radar 誤差補償
     LEAD_MIN_DECEL_BP = [40.0, 60.0, 90.0, 120.0]
