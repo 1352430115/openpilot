@@ -77,6 +77,16 @@ LEAD_DISTANCE_BP = [10.0, 15.0, 20.0, 30.0, 40.0, 55.0, 70.0, 90.0, 120.0]
 LEAD_DISTANCE_SCALE = [0.2, 0.5, 0.8, 1.0, 1.2, 1.5, 2.0, 3.0, 4.0]
 LEAD_MIN_DECEL_BP = [40.0, 60.0, 90.0, 120.0]
 LEAD_MIN_DECEL = [0.00, 0.05, 0.12, 0.20]
+# ============================================================
+# 前車極端急煞 / 接近靜止安全防護
+# ============================================================
+SAFETY_STOP_TRIGGER = 5.0
+SAFETY_STOP_MIN_DISTANCE = 4.0
+SAFETY_STOP_RELEASE_DISTANCE = 5.0
+SAFETY_STOP_EGO_SPEED = 25.0 / 3.6
+SAFETY_STOP_LEAD_SPEED = 3.0 / 3.6
+SAFETY_STOP_DECEL = -1.5
+
 
 
 def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
@@ -284,6 +294,7 @@ class LongitudinalMpc:
     self.set_weights()
     self.lead_v_history = []
     self.lead_start_counter = 0
+    self.safety_stop_active = False
 
   def set_cost_weights(self, cost_weights, constraint_cost_weights):
     W = np.asfortranarray(np.diag(cost_weights))
@@ -356,9 +367,40 @@ class LongitudinalMpc:
     v_lead_mpc = np.interp(T_IDXS, LEAD_T_IDXS_MODEL, v_lead_traj)
     return np.column_stack((x_lead_mpc, v_lead_mpc))
 
+  def update_safety_stop(self, radarstate, v_ego):
+    lead = radarstate.leadOne
+
+    if not lead.present:
+      self.safety_stop_active = False
+      return
+
+    d_rel = float(lead.dRel)
+    v_lead = max(float(lead.vLead), 0.0)
+
+    if self.safety_stop_active:
+      if d_rel >= SAFETY_STOP_RELEASE_DISTANCE or v_lead > SAFETY_STOP_LEAD_SPEED * 1.5:
+        self.safety_stop_active = False
+    elif (
+      d_rel <= SAFETY_STOP_TRIGGER and
+      v_ego <= SAFETY_STOP_EGO_SPEED and
+      v_lead <= SAFETY_STOP_LEAD_SPEED
+    ):
+      self.safety_stop_active = True
+
+  def apply_safety_stop(self, lead_xv_0):
+    if not self.safety_stop_active:
+      return
+
+    # 最後一道防線：前車接近停止且自車已低速時，
+    # 直接把 MPC 使用的主要前車 obstacle 壓到至少 3m，
+    # 同時視為低速前車，避免 MPC 因預測 trajectory 放掉煞車。
+    lead_xv_0[:, 0] = np.minimum(lead_xv_0[:, 0], SAFETY_STOP_MIN_DISTANCE)
+    lead_xv_0[:, 1] = np.minimum(lead_xv_0[:, 1], SAFETY_STOP_LEAD_SPEED)
+
   def update(self, v_cruise, modelV2, radarstate, personality=log.LongitudinalPersonality.standard):
     v_ego = self.x0[1]
     t_follow = get_T_FOLLOW(personality, v_ego)
+    self.update_safety_stop(radarstate, v_ego)
 
     model_leads = modelV2.leadsV3
     self.status = model_leads[0].prob > 0.5 or model_leads[1].prob > 0.5
@@ -443,6 +485,11 @@ class LongitudinalMpc:
         # 只把主要前車的 obstacle 往前拉近。
         lead_0_obstacle -= offset
 
+    self.apply_safety_stop(lead_xv_0)
+
+    if self.safety_stop_active:
+      lead_0_obstacle = np.minimum(lead_0_obstacle, SAFETY_STOP_MIN_DISTANCE)
+
     # Fake an obstacle for cruise, this ensures smooth acceleration to set speed
     # when the leads are no factor.
     v_lower = v_ego + (T_IDXS * CRUISE_MIN_ACCEL * 1.05)
@@ -465,6 +512,10 @@ class LongitudinalMpc:
     self.params[:,3] = np.copy(self.a_prev)
     self.params[:,4] = t_follow
     self.params[:,5] = LEAD_DANGER_FACTOR
+
+    if self.safety_stop_active:
+      # 不允許 MPC 在安全鎖定期間產生正加速度。
+      self.params[:,1] = np.minimum(self.params[:,1], 0.0)
 
     # ============================================================
     # 追車加速抑制 V4
