@@ -6,8 +6,8 @@ from openpilot.selfdrive.controls.lib.drive_helpers import smooth_value
 
 
 _MIN_V_EGO = 5.0
-_MIN_LANE_PROB = 0.6
-_MAX_LANE_STD = 0.3
+_MIN_LANE_PROB = 0.4
+_MAX_LANE_STD = 0.6
 _MIN_LANE_WIDTH = 2.6
 _MAX_LANE_WIDTH = 4.8
 _MAX_OFFSET = 0.3
