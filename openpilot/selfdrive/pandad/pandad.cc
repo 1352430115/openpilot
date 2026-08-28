@@ -43,7 +43,7 @@ bool process_mads_heartbeat(SubMaster *sm) {
   const auto &mads = (*sm)["selfdriveStateSP"].getSelfdriveStateSP().getMads();
   const bool heartbeat_type = disengage_lateral_on_brake ? mads.getActive() : mads.getEnabled();
 
-  return sm->allAliveAndValid({"selfdriveStateSP"}) && heartbeat_type;
+  return sm->allAliveAndValid({"selfdriveStateSP", "carParams"}) && heartbeat_type;
 }
 
 Panda *connect(std::string serial="", uint32_t index=0) {
@@ -487,7 +487,7 @@ void pandad_run(std::vector<Panda *> &pandas) {
       if (sm.updated("deviceState")) {
         is_onroad = sm["deviceState"].getDeviceState().getStarted();
       }
-      engaged_mads = (&sm);
+      engaged_mads = process_mads_heartbeat(&sm);
       always_offroad = panda_safety.getOffroadMode();
       process_panda_state(pandas, &pm, engaged, engaged_mads, is_onroad, spoofing_started, always_offroad);
       panda_safety.configureSafetyMode(is_onroad);
