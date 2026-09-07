@@ -18,7 +18,7 @@ from openpilot.common.swaglog import cloudlog
 from openpilot.sunnypilot.selfdrive.controls.lib.longitudinal_planner import LongitudinalPlannerSP
 from openpilot.sunnypilot.selfdrive.controls.lib.traffic_stop.traffic_stop_controller import TrafficStopController
 
-A_CRUISE_MAX_VALS = [1.6, 1.1, 0.6, 0.2]
+A_CRUISE_MAX_VALS = [1.3, 0.4, 0.3, 0.2]
 A_CRUISE_MAX_BP = [0., 10.0, 25., 40.]
 J_CRUISE_VALS = [1.6, 1.1, 0.6, 0.2]
 A_CRUISE_MIN = -1.2
