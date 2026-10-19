@@ -22,7 +22,7 @@
 #include "selfdrive/pandad/spi_alert.h"
 #include "system/hardware/hw.h"
 
-#define MAX_IR_PANDA_VAL 50
+#define MAX_IR_PANDA_VAL 0
 #define CUTOFF_IL 400
 #define SATURATE_IL 1000
 
