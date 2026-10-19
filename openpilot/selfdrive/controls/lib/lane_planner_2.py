@@ -119,8 +119,8 @@ class LanePlanner:
     r_prob *= mod
 
     # Reduce reliance on uncertain lanelines
-    l_std_mod = np.interp(self.lll_std, [.15, .3], [1.0, 0.0])
-    r_std_mod = np.interp(self.rll_std, [.15, .3], [1.0, 0.0])
+    l_std_mod = np.interp(self.lll_std, [.18, .35], [1.0, 0.0])
+    r_std_mod = np.interp(self.rll_std, [.18, .35], [1.0, 0.0])
     l_prob *= l_std_mod
     r_prob *= r_std_mod
 
@@ -132,7 +132,7 @@ class LanePlanner:
     max_updated_count = 10.0 * DT_MDL
     both_lane_available = False
     #speed_lane_width = np.interp(v_ego*3.6, [0., 60.], [2.8, 3.5])
-    if l_prob > 0.5 and r_prob > 0.5 and self.lane_change_multiplier > 0.5:
+    if l_prob > 0.35 and r_prob > 0.35 and self.lane_change_multiplier > 0.5:
       both_lane_available = True
       #self.lane_width_updated_count = max_updated_count
       self.lane_width_estimate.update(current_lane_width)
@@ -233,7 +233,7 @@ class LanePlanner:
     adjustLaneTime = self.params.get_float("LatMpcInputOffset") * 0.01 # 0.06 
     laneline_active = False
     self.d_prob_count = self.d_prob_count + 1 if self.d_prob > 0.3 else 0
-    if self.lanefull_mode and self.d_prob_count > int(1 / DT_MDL):
+    if self.lanefull_mode and self.d_prob_count > int(0.7 / DT_MDL):
       laneline_active = True
       use_dist_mode = False  ## 아무리생각해봐도.. 같은 방법인듯...
       if use_dist_mode:
