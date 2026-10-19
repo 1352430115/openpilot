@@ -136,6 +136,7 @@ const EncoderInfo stream_driver_encoder_info = {
 const EncoderInfo qcam_encoder_info = {
   .publish_name = "qRoadEncodeData",
   .filename = "qcamera.ts",
+  .record = Params().getInt("RecordRoadCam") > 0,
   .include_audio = Params().getBool("RecordAudio"),
   .frame_width = 526,
   .frame_height = 330,
