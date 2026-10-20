@@ -238,8 +238,8 @@ class AudioProcess(RestartingPythonProcess):
 procs = [
   DaemonProcess("manage_athenad", "openpilot.system.athena.manage_athenad", "AthenadPid"),
 
-  NativeProcess("loggerd", "openpilot/system/loggerd", ["./loggerd"], logging),
-  NativeProcess("encoderd", "openpilot/system/loggerd", ["./encoderd"], only_onroad),
+  #NativeProcess("loggerd", "openpilot/system/loggerd", ["./loggerd"], logging),
+  #NativeProcess("encoderd", "openpilot/system/loggerd", ["./encoderd"], only_onroad),
   NativeProcess("stream_encoderd", "openpilot/system/loggerd", ["./encoderd", "--stream"], or_(livestream, notcar)),
   # Carrot Vision WebRTC (port 5001, the /stream proxy target on 7000). Runs
   # alongside the generic daemon (below, under debug procs), which keeps its
