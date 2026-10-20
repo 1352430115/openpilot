@@ -21,7 +21,7 @@ from openpilot.sunnypilot.carrot.traffic_stop import (
   get_traffic_stop_distance_adjust, get_traffic_stop_obstacle_distance,
 )
 
-A_CRUISE_MAX_VALS = [1.6, 1.2, 0.8, 0.6]
+A_CRUISE_MAX_VALS = [1.6, 0.45, 0.35, 0.3]
 A_CRUISE_MAX_BP = [0., 10.0, 25., 40.]
 J_CRUISE_VALS = [1.6, 1.2, 0.8, 0.6]
 A_CRUISE_MIN = -1.2
