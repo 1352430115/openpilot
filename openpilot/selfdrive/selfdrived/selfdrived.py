@@ -269,8 +269,6 @@ class SelfdriveD(CruiseHelper):
         self.params.remove("DriverTooDistracted")
         self.dm_lockout_set = False
       # No entry conditions
-      if self.sm['driverMonitoringState'].lockout or self.sm['driverMonitoringState'].alwaysOnLockout:
-        self.events.add(EventName.tooDistracted)
       # Alerts
       vision_dm = self.sm['driverMonitoringState'].activePolicy == MonitoringPolicy.vision
       if self.sm['driverMonitoringState'].alertLevel == AlertLevel.one:
