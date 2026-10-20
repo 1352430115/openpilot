@@ -392,7 +392,7 @@ class DriverMonitoring:
       dm.lockoutMinutesRemaining = max(1, round((self.lockout_duration - self.lockout_time_elapsed) * DT_DMON / 60.))
     dm.alert3Count = self.alert_3_cnt
     dm.noResponseCount = self.no_response_cnt
-    dm.noResponseForceDecel = self.alert_level == AlertLevel.three and self.cnt_since_alert_3 >= self.no_response_timeout
+    dm.noResponseForceDecel = False
     dm.alwaysOn = self.always_on
     dm.alwaysOnLockout = self.always_on and self.awareness <= self.threshold_alert_2
     dm.alertLevel = self.alert_level
