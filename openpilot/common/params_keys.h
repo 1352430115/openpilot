@@ -354,7 +354,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"MazdaTorqueTuneSeeded", {PERSISTENT | BACKUP, FLOAT}},
 
     {"DistractionDetectionLevel", {PERSISTENT | BACKUP, INT, "1"}},
-    {"DisableDM", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"DisableDM", {PERSISTENT | BACKUP, BOOL, "1"}},
     {"LivestreamActiveCamera", {CLEAR_ON_MANAGER_START | DONT_LOG, STRING}},
     {"LivestreamEncoderLagging", {CLEAR_ON_MANAGER_START | DONT_LOG, BOOL}},
     {"LocalDriveStats", {PERSISTENT, JSON}},
